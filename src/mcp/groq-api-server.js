@@ -24,6 +24,10 @@ class GroqAPIServer {
     this.app = express();
     this.port = process.env.GROQ_API_PORT || 6003;
     
+    // Logger y métricas
+    this.logger = LoggerFactory.create('groq-api-server');
+    this.metrics = MetricsFactory.create('groq_api');
+    
     // Cargar múltiples API keys (separadas por comas)
     const groqKeys = process.env.GROQ_API_KEY || '';
     // Limpiar y procesar API keys usando APIKeyCleaner
@@ -157,20 +161,21 @@ class GroqAPIServer {
       return res.status(error.statusCode).json(error.toJSON());
     }
     
-    // Verificar cache primero
-    const cacheKey = this.generateCacheKey(messages, model);
-    const cached = this.cache.get(cacheKey);
-    if (cached && (Date.now() - cached.timestamp) < this.cacheTTL) {
-      this.stats.cacheHits++;
-      this.currentRequests--;
-      return res.json({
-        success: true,
-        content: cached.response,
-        cached: true
-      });
-    }
-    
-    this.stats.cacheMisses++;
+      // Verificar cache primero
+      const cacheKey = this.generateCacheKey(messages, model);
+      const cached = this.cache.get(cacheKey);
+      if (cached && (Date.now() - cached.timestamp) < this.cacheTTL) {
+        this.stats.cacheHits++;
+        this.currentRequests--;
+        this.metrics.increment('cache_hits', {});
+        return res.json({
+          success: true,
+          content: cached.response,
+          cached: true
+        });
+      }
+      
+      this.stats.cacheMisses++;
     
     // Intentar con la key actual
     let attempts = 0;
@@ -254,11 +259,15 @@ class GroqAPIServer {
         });
         
       } catch (error) {
-        // Si es error 429 (rate limit) o 401 (invalid key), bloquear key temporalmente
-        if (error.response && (error.response.status === 429 || error.response.status === 401)) {
-          this.keyBlockedUntil.set(apiKey, Date.now() + this.blockDuration);
-          console.warn(`⚠️ Key bloqueada temporalmente: ${error.response.status}`);
-        }
+          // Si es error 429 (rate limit) o 401 (invalid key), bloquear key temporalmente
+          if (error.response && (error.response.status === 429 || error.response.status === 401)) {
+            this.keyBlockedUntil.set(apiKey, Date.now() + this.blockDuration);
+            this.logger.warn('Key bloqueada temporalmente', {
+              statusCode: error.response.status,
+              keyIndex: this.currentKeyIndex
+            });
+            this.metrics.increment('api_key_blocked', { status: error.response.status });
+          }
         
         // Rotar a la siguiente key
         this.rotateKey();
@@ -377,7 +386,19 @@ class GroqAPIServer {
       res.setHeader('X-API-Deprecated', 'true');
       res.setHeader('X-API-Version', 'v1');
       res.setHeader('X-API-Migration', '/api/v1/groq/stats');
-      res.json(this.stats);
+      res.json({
+        ...this.stats,
+        metrics: this.metrics.getJSONFormat()
+      });
+    });
+    
+    // Métricas Prometheus (legacy - deprecated)
+    this.app.get('/groq/metrics', (req, res) => {
+      res.setHeader('X-API-Deprecated', 'true');
+      res.setHeader('X-API-Version', 'v1');
+      res.setHeader('X-API-Migration', '/api/v1/groq/metrics');
+      res.setHeader('Content-Type', 'text/plain');
+      res.send(this.metrics.getPrometheusFormat());
     });
     
     // Limpiar cache (legacy - deprecated)

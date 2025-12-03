@@ -22,6 +22,8 @@
   "author": "GUESTVALENCIA",
   "license": "MIT",
   "dependencies": {
+    "swagger-ui-express": "^5.0.0",
+    "yamljs": "^0.3.0",
     "@deepgram/sdk": "^3.5.0",
     "axios": "^1.6.0",
     "dotenv": "^16.3.1",

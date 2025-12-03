@@ -1,0 +1,543 @@
+openapi: 3.1.0
+info:
+  title: Qwen-Valencia API
+  description: |
+    API Enterprise-Level para Qwen-Valencia - Sistema de ejecución de modelos de lenguaje
+    con soporte para Groq API y Ollama local, incluyendo fallback inteligente, circuit breakers,
+    rate limiting y manejo de errores estandarizado.
+  version: 1.0.0
+  contact:
+    name: Qwen-Valencia Support
+    url: https://github.com/GUESTVALENCIA/Qwen-Valencia
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:6003
+    description: Groq API Server (desarrollo)
+  - url: http://localhost:6002
+    description: Ollama MCP Server (desarrollo)
+  - url: http://localhost:6000
+    description: MCP Universal Server (desarrollo)
+
+tags:
+  - name: Groq API
+    description: Endpoints para interactuar con modelos Groq API
+  - name: Ollama
+    description: Endpoints para interactuar con modelos Ollama locales
+  - name: Health
+    description: Endpoints de health check y estadísticas
+  - name: Models
+    description: Gestión de modelos disponibles
+
+paths:
+  /api/v1/groq/health:
+    get:
+      tags:
+        - Health
+        - Groq API
+      summary: Health check del servidor Groq API
+      description: Verifica el estado del servidor y muestra estadísticas
+      operationId: getGroqHealth
+      responses:
+        '200':
+          description: Servidor saludable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Servidor no disponible
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/groq/models:
+    get:
+      tags:
+        - Models
+        - Groq API
+      summary: Listar modelos disponibles en Groq
+      description: Obtiene la lista de modelos disponibles en Groq API
+      operationId: listGroqModels
+      responses:
+        '200':
+          description: Lista de modelos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  version:
+                    type: string
+                    example: v1
+                  models:
+                    type: array
+                    items:
+                      type: string
+                    example:
+                      - qwen2.5-72b-instruct
+                      - qwen2.5-32b-instruct
+                      - deepseek-r1-distill-llama-70b
+                  defaultModel:
+                    type: string
+                    example: llama-3.3-70b-versatile
+
+  /api/v1/groq/chat:
+    post:
+      tags:
+        - Groq API
+      summary: Chat con modelo Groq
+      description: Envía un mensaje a un modelo Groq y recibe la respuesta
+      operationId: groqChat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Respuesta exitosa
+          headers:
+            X-RateLimit-Limit:
+              schema:
+                type: integer
+              description: Límite de requests por ventana
+            X-RateLimit-Remaining:
+              schema:
+                type: integer
+              description: Requests restantes en la ventana actual
+            X-RateLimit-Reset:
+              schema:
+                type: string
+                format: date-time
+              description: Tiempo de reset de la ventana
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        '400':
+          description: Request inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: API Key inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit excedido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/groq/stats:
+    get:
+      tags:
+        - Health
+        - Groq API
+      summary: Estadísticas del servidor Groq
+      description: Obtiene estadísticas de uso del servidor Groq API
+      operationId: getGroqStats
+      responses:
+        '200':
+          description: Estadísticas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsResponse'
+
+  /api/v1/groq/cache/clear:
+    post:
+      tags:
+        - Groq API
+      summary: Limpiar cache
+      description: Limpia el cache de respuestas del servidor Groq
+      operationId: clearGroqCache
+      responses:
+        '200':
+          description: Cache limpiado exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Cache limpiado
+                  version:
+                    type: string
+                    example: v1
+
+  /ollama/health:
+    get:
+      tags:
+        - Health
+        - Ollama
+      summary: Health check del servidor Ollama
+      description: Verifica el estado del servidor Ollama y muestra estadísticas
+      operationId: getOllamaHealth
+      responses:
+        '200':
+          description: Servidor saludable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OllamaHealthResponse'
+
+  /ollama/models:
+    get:
+      tags:
+        - Models
+        - Ollama
+      summary: Listar modelos disponibles en Ollama
+      description: Obtiene la lista de modelos instalados en Ollama
+      operationId: listOllamaModels
+      responses:
+        '200':
+          description: Lista de modelos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  ollamaAvailable:
+                    type: boolean
+                    example: true
+                  models:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          example: qwen2.5:7b-instruct
+                        size:
+                          type: integer
+                          example: 4294967296
+                        modified_at:
+                          type: string
+                          format: date-time
+
+  /ollama/models/{modelName}:
+    get:
+      tags:
+        - Models
+        - Ollama
+      summary: Verificar disponibilidad de un modelo
+      description: Verifica si un modelo específico está disponible en Ollama
+      operationId: checkOllamaModel
+      parameters:
+        - name: modelName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Nombre del modelo a verificar
+          example: qwen2.5:7b-instruct
+      responses:
+        '200':
+          description: Estado del modelo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  model:
+                    type: string
+                  available:
+                    type: boolean
+
+  /ollama/chat:
+    post:
+      tags:
+        - Ollama
+      summary: Chat con modelo Ollama
+      description: Envía un mensaje a un modelo Ollama local y recibe la respuesta
+      operationId: ollamaChat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OllamaChatRequest'
+      responses:
+        '200':
+          description: Respuesta exitosa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        '400':
+          description: Request inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Modelo no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit excedido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    ChatRequest:
+      type: object
+      required:
+        - model
+        - messages
+      properties:
+        model:
+          type: string
+          description: Nombre del modelo a usar
+          example: qwen2.5-72b-instruct
+        messages:
+          type: array
+          description: Array de mensajes en formato OpenAI
+          items:
+            type: object
+            properties:
+              role:
+                type: string
+                enum: [system, user, assistant]
+                example: user
+              content:
+                type: string
+                example: Hola, ¿cómo estás?
+        temperature:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 2
+          default: 0.7
+          description: Temperatura para la generación
+        max_tokens:
+          type: integer
+          default: 2048
+          description: Máximo de tokens a generar
+        stream:
+          type: boolean
+          default: false
+          description: Si se debe usar streaming
+
+    OllamaChatRequest:
+      type: object
+      required:
+        - model
+        - messages
+      properties:
+        model:
+          type: string
+          description: Nombre del modelo Ollama
+          example: qwen2.5:7b-instruct
+        messages:
+          type: array
+          description: Array de mensajes
+          items:
+            type: object
+            properties:
+              role:
+                type: string
+                enum: [system, user, assistant]
+              content:
+                type: string
+        images:
+          type: array
+          description: Array de imágenes en base64 (opcional)
+          items:
+            type: string
+        options:
+          type: object
+          description: Opciones adicionales para Ollama
+          properties:
+            temperature:
+              type: number
+            num_ctx:
+              type: integer
+
+    ChatResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        content:
+          type: string
+          description: Contenido de la respuesta
+          example: Hola, estoy bien. ¿En qué puedo ayudarte?
+        model:
+          type: string
+          description: Modelo usado para generar la respuesta
+          example: qwen2.5-72b-instruct
+        usage:
+          type: object
+          description: Información de uso de tokens
+          properties:
+            prompt_tokens:
+              type: integer
+            completion_tokens:
+              type: integer
+            total_tokens:
+              type: integer
+        cached:
+          type: boolean
+          description: Si la respuesta fue servida desde cache
+          example: false
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              description: Código de error estandarizado
+              example: ERR_API_KEY_INVALID
+            message:
+              type: string
+              description: Mensaje de error descriptivo
+              example: API Key inválida o no autorizada
+            statusCode:
+              type: integer
+              description: Código HTTP del error
+              example: 401
+            details:
+              type: object
+              description: Detalles adicionales del error
+            retryable:
+              type: boolean
+              description: Si el error es retryable
+              example: false
+            timestamp:
+              type: string
+              format: date-time
+              description: Timestamp del error
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: healthy
+        service:
+          type: string
+          example: groq-api
+        version:
+          type: string
+          example: v1
+        apiKeysCount:
+          type: integer
+          description: Número de API keys configuradas
+        currentKeyIndex:
+          type: integer
+          description: Índice de la API key actual
+        cacheSize:
+          type: integer
+          description: Tamaño del cache
+        stats:
+          $ref: '#/components/schemas/StatsResponse'
+
+    OllamaHealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: healthy
+        service:
+          type: string
+          example: ollama-mcp
+        ollamaUrl:
+          type: string
+          example: http://localhost:11434
+        activeStreams:
+          type: integer
+          description: Número de streams activos
+        cacheSize:
+          type: integer
+          description: Tamaño del cache
+        currentRequests:
+          type: integer
+          description: Requests concurrentes actuales
+        stats:
+          $ref: '#/components/schemas/StatsResponse'
+
+    StatsResponse:
+      type: object
+      properties:
+        totalRequests:
+          type: integer
+          description: Total de requests procesados
+        successfulRequests:
+          type: integer
+          description: Requests exitosos
+        failedRequests:
+          type: integer
+          description: Requests fallidos
+        cacheHits:
+          type: integer
+          description: Hits de cache
+        cacheMisses:
+          type: integer
+          description: Misses de cache
+        keyRotations:
+          type: integer
+          description: Rotaciones de API keys (solo Groq)
+        errors:
+          type: integer
+          description: Total de errores
+        avgResponseTime:
+          type: number
+          description: Tiempo promedio de respuesta en ms (solo Ollama)
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API Key para autenticación (opcional para endpoints públicos)
+
+security:
+  - ApiKeyAuth: []
+
