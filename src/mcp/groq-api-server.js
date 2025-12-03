@@ -160,6 +160,31 @@ class GroqAPIServer {
       res.setHeader('X-API-Deprecated', 'true');
       res.setHeader('X-API-Version', 'v1');
       res.setHeader('X-API-Migration', '/api/v1/groq/models');
+      res.json({
+        success: true,
+        models: this.availableModels,
+        defaultModel: 'llama-3.3-70b-versatile'
+      });
+    });
+    
+    // Estadísticas (legacy - deprecated)
+    this.app.get('/groq/stats', (req, res) => {
+      res.setHeader('X-API-Deprecated', 'true');
+      res.setHeader('X-API-Version', 'v1');
+      res.setHeader('X-API-Migration', '/api/v1/groq/stats');
+      res.json(this.stats);
+    });
+    
+    // Limpiar cache (legacy - deprecated)
+    this.app.post('/groq/cache/clear', (req, res) => {
+      res.setHeader('X-API-Deprecated', 'true');
+      res.setHeader('X-API-Version', 'v1');
+      res.setHeader('X-API-Migration', '/api/v1/groq/cache/clear');
+      this.cache.clear();
+      res.json({ success: true, message: 'Cache limpiado' });
+    });
+  }
+  
   /**
    * Maneja request de chat (extraído para reutilizar en v1 y legacy)
    */
@@ -376,10 +401,14 @@ class GroqAPIServer {
       res.setHeader('X-API-Deprecated', 'true');
       res.setHeader('X-API-Version', 'v1');
       res.setHeader('X-API-Migration', '/api/v1/groq/health');
-    
-    // Estadísticas
-    this.app.get('/groq/stats', (req, res) => {
-      res.json(this.stats);
+      res.json({
+        status: 'healthy',
+        service: 'groq-api',
+        apiKeysCount: this.apiKeys.length,
+        currentKeyIndex: this.currentKeyIndex,
+        cacheSize: this.cache.size,
+        stats: this.stats
+      });
     });
     
     // Limpiar cache
