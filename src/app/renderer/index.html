@@ -442,12 +442,16 @@
     <script>
         // Verificación de que las funciones críticas estén disponibles
         window.addEventListener('load', () => {
-            console.log('✅ Script cargado. Funciones disponibles:', {
+            const logger = window.logger || { info: console.log };
+            logger.info('Script cargado. Funciones disponibles', {
                 toggleModelMenu: typeof window.toggleModelMenu,
                 handleKeydown: typeof window.handleKeydown,
                 autoResize: typeof window.autoResize,
                 sendMessage: typeof window.sendMessage,
-                toggleTheme: typeof window.toggleTheme
+                toggleTheme: typeof window.toggleTheme,
+                stateManager: typeof window.getStateManager,
+                eventManager: typeof window.getEventManager,
+                apiService: typeof window.getAPIService
             });
         });
     </script>
