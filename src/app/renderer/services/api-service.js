@@ -179,10 +179,11 @@ class APIService {
       // Usar error handler centralizado
       if (typeof window !== 'undefined' && window.handleAPIError) {
         window.handleAPIError(error, 'api-service', { 
-        method, 
-        url, 
-        correlationId 
-      });
+          method, 
+          url, 
+          correlationId 
+        });
+      }
 
       throw error;
     }
