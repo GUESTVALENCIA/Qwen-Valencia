@@ -7,59 +7,46 @@
 
 :root {
   /* ═══════════════════════════════════════════════════════════════════
-     COLOR SYSTEM - Dark Theme (Default)
+     DESIGN TOKENS - Extiende variables existentes de main.css
+     Usa los mismos nombres para mantener compatibilidad
      ═══════════════════════════════════════════════════════════════════ */
   
-  /* Background Colors */
-  --color-bg-primary: #1e1e1e;
-  --color-bg-secondary: #252526;
-  --color-bg-tertiary: #2d2d2d;
-  --color-bg-quaternary: #3c3c3c;
-  --color-bg-hover: #3c3c3c;
-  --color-bg-active: #094771;
-  --color-bg-overlay: rgba(0, 0, 0, 0.5);
-  --color-bg-glass: rgba(255, 255, 255, 0.05);
-  --color-bg-glass-strong: rgba(255, 255, 255, 0.1);
+  /* Mapeo de variables existentes a nuevas (para compatibilidad) */
+  /* Las variables existentes ya están definidas en main.css */
   
-  /* Border Colors */
-  --color-border-default: #3c3c3c;
-  --color-border-strong: #4a4a4a;
-  --color-border-subtle: rgba(255, 255, 255, 0.1);
-  --color-border-focus: #0078d4;
-  --color-border-error: #f14c4c;
-  --color-border-success: #4ec9b0;
-  --color-border-warning: #dcdcaa;
+  /* Variables adicionales que no rompen el diseño existente */
+  --bg-overlay: rgba(0, 0, 0, 0.5);
+  --bg-glass: rgba(255, 255, 255, 0.05);
+  --bg-glass-strong: rgba(255, 255, 255, 0.1);
   
-  /* Text Colors */
-  --color-text-primary: #cccccc;
-  --color-text-secondary: #969696;
-  --color-text-muted: #6e6e6e;
-  --color-text-disabled: #4a4a4a;
-  --color-text-inverse: #1e1e1e;
-  --color-text-link: #4a9eff;
-  --color-text-link-hover: #6bb3ff;
+  /* Border adicionales */
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-focus: var(--accent);
+  --border-error: var(--error);
+  --border-success: var(--success);
+  --border-warning: var(--warning);
   
-  /* Accent Colors */
-  --color-accent-primary: #0078d4;
-  --color-accent-primary-hover: #1a8cff;
-  --color-accent-primary-active: #005a9e;
-  --color-accent-primary-light: rgba(0, 120, 212, 0.15);
-  --color-accent-secondary: #4a9eff;
-  --color-accent-secondary-hover: #6bb3ff;
+  /* Text adicionales */
+  --text-disabled: #4a4a4a;
+  --text-inverse: #1e1e1e;
+  --text-link: #4a9eff;
+  --text-link-hover: #6bb3ff;
   
-  /* Semantic Colors */
-  --color-success: #4ec9b0;
-  --color-success-bg: rgba(78, 201, 176, 0.15);
-  --color-success-border: rgba(78, 201, 176, 0.3);
-  --color-warning: #dcdcaa;
-  --color-warning-bg: rgba(220, 220, 170, 0.15);
-  --color-warning-border: rgba(220, 220, 170, 0.3);
-  --color-error: #f14c4c;
-  --color-error-bg: rgba(241, 76, 76, 0.15);
-  --color-error-border: rgba(241, 76, 76, 0.3);
-  --color-info: #4a9eff;
-  --color-info-bg: rgba(74, 158, 255, 0.15);
-  --color-info-border: rgba(74, 158, 255, 0.3);
+  /* Accent adicionales */
+  --accent-active: #005a9e;
+  --accent-secondary: #4a9eff;
+  --accent-secondary-hover: #6bb3ff;
+  
+  /* Semantic adicionales */
+  --success-bg: rgba(78, 201, 176, 0.15);
+  --success-border: rgba(78, 201, 176, 0.3);
+  --warning-bg: rgba(220, 220, 170, 0.15);
+  --warning-border: rgba(220, 220, 170, 0.3);
+  --error-bg: rgba(241, 76, 76, 0.15);
+  --error-border: rgba(241, 76, 76, 0.3);
+  --info: #4a9eff;
+  --info-bg: rgba(74, 158, 255, 0.15);
+  --info-border: rgba(74, 158, 255, 0.3);
   
   /* ═══════════════════════════════════════════════════════════════════
      SPACING SYSTEM - 4px base unit
@@ -203,46 +190,17 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 body.light {
-  /* Background Colors */
-  --color-bg-primary: #ffffff;
-  --color-bg-secondary: #f8f8f8;
-  --color-bg-tertiary: #f0f0f0;
-  --color-bg-quaternary: #e8e8e8;
-  --color-bg-hover: #e8e8e8;
-  --color-bg-active: #cce5ff;
-  --color-bg-overlay: rgba(0, 0, 0, 0.3);
-  --color-bg-glass: rgba(255, 255, 255, 0.8);
-  --color-bg-glass-strong: rgba(255, 255, 255, 0.95);
-  
-  /* Border Colors */
-  --color-border-default: #c0c0c0;
-  --color-border-strong: #909090;
-  --color-border-subtle: rgba(0, 0, 0, 0.1);
-  --color-border-focus: #0066cc;
-  
-  /* Text Colors */
-  --color-text-primary: #1a1a1a;
-  --color-text-secondary: #404040;
-  --color-text-muted: #606060;
-  --color-text-disabled: #909090;
-  --color-text-inverse: #ffffff;
-  --color-text-link: #0066cc;
-  --color-text-link-hover: #0052a3;
-  
-  /* Accent Colors */
-  --color-accent-primary: #0066cc;
-  --color-accent-primary-hover: #0052a3;
-  --color-accent-primary-active: #004080;
-  --color-accent-primary-light: rgba(0, 102, 204, 0.12);
-  
-  /* Shadows */
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.03);
-  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
-  --shadow-xl: 0 8px 32px rgba(0, 0, 0, 0.15);
-  --shadow-2xl: 0 16px 64px rgba(0, 0, 0, 0.2);
-  --shadow-focus: 0 0 0 3px rgba(0, 102, 204, 0.15);
+  /* Variables adicionales para light theme */
+  --bg-overlay: rgba(0, 0, 0, 0.3);
+  --bg-glass: rgba(255, 255, 255, 0.8);
+  --bg-glass-strong: rgba(255, 255, 255, 0.95);
+  --border-subtle: rgba(0, 0, 0, 0.1);
+  --border-focus: var(--accent);
+  --text-disabled: #909090;
+  --text-inverse: #ffffff;
+  --text-link: var(--accent);
+  --text-link-hover: var(--accent-hover);
+  --accent-active: #004080;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -281,14 +239,14 @@ body.light {
 .font-semibold { font-weight: var(--font-weight-semibold); }
 .font-bold { font-weight: var(--font-weight-bold); }
 
-/* Color Utilities */
-.text-primary { color: var(--color-text-primary); }
-.text-secondary { color: var(--color-text-secondary); }
-.text-muted { color: var(--color-text-muted); }
-.text-success { color: var(--color-success); }
-.text-warning { color: var(--color-warning); }
-.text-error { color: var(--color-error); }
-.text-info { color: var(--color-info); }
+/* Color Utilities - Usan variables existentes */
+.text-primary { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-muted { color: var(--text-muted); }
+.text-success { color: var(--success); }
+.text-warning { color: var(--warning); }
+.text-error { color: var(--error); }
+.text-info { color: var(--info); }
 
 /* Transition Utilities */
 .transition-fast { transition: var(--transition-fast); }
