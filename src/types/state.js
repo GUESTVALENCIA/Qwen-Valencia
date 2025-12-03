@@ -8,7 +8,8 @@
  */
 
 /**
- * @typedef {Object} AppConfig
+ * @typedef {Object} UIConfig
+ * Configuración de UI/frontend de la aplicación
  * @property {string} ollamaUrl - URL de Ollama
  * @property {number} temperature - Temperatura por defecto
  * @property {number} maxTokens - Máximo de tokens por defecto
@@ -17,13 +18,14 @@
 
 /**
  * @typedef {Object} AppState
+ * Estado completo de la aplicación frontend
  * @property {string} model - Modelo seleccionado
  * @property {AppMode} mode - Modo de la aplicación
  * @property {ChatMessage[]} messages - Mensajes de la conversación
  * @property {boolean} isGenerating - Si está generando respuesta
  * @property {string|null} attachedImage - Imagen adjunta (base64 o URL)
  * @property {Object|null} stream - Stream activo
- * @property {AppConfig} config - Configuración de la app
+ * @property {UIConfig} config - Configuración de UI de la app
  * @property {string} theme - Tema ('dark'|'light')
  * @property {boolean} useAPI - Si usar API (Groq) o local (Ollama)
  * @property {boolean} autoMode - Si está en modo auto

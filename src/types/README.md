@@ -63,9 +63,10 @@ async function sendMessage(modelId, messages) {
 
 ### Estado
 
-- `AppState` - Estado completo de la aplicación
+- `AppState` - Estado completo de la aplicación frontend
 - `AppMode` - 'agent' | 'chat' | 'code'
-- `AppConfig` - Configuración de la app
+- `UIConfig` - Configuración de UI/frontend
+- `ServiceAppConfig` - Configuración de servicios backend
 
 ### API
 

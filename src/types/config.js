@@ -52,7 +52,8 @@
  */
 
 /**
- * @typedef {Object} AppConfig
+ * @typedef {Object} ServiceAppConfig
+ * Configuración de servicios backend de la aplicación
  * @property {GroqConfig} groq - Configuración de Groq
  * @property {OllamaConfig} ollama - Configuración de Ollama
  * @property {MCPConfig} mcp - Configuración de MCP
