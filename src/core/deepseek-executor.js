@@ -434,7 +434,7 @@ RECUERDA: ERES ESPECIALIZADO EN CÓDIGO. GENERAS Y EJECUTAS REALMENTE.`;
           const startTime = Date.now();
           const response = await ollamaBreaker.execute(
             () => retry(
-              () => this.callOllama(text, model),
+              () => this.callOllama(text, attachments, null, model),
               {
                 maxRetries: 2,
                 onRetry: (error, attempt, delay) => {
