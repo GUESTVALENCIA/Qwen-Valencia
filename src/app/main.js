@@ -28,6 +28,9 @@ const { validateIPC } = require('./ipc-validator');
 const { initializeTray, updateTrayMenu, showNotification, destroyTray } = require('./tray');
 const { configureUpdater, startAutoUpdateCheck, checkForUpdates } = require('./updater');
 const terminalManager = require('./terminal');
+const { globalServiceRegistry } = require('../services/service-registry');
+const { globalHealthAggregator } = require('../services/health-aggregator');
+const { globalTracer } = require('../services/distributed-tracing');
 
 // Inicializar logger estructurado
 const logger = LoggerFactory.create({ service: 'electron-main' });
@@ -101,12 +104,44 @@ async function startDedicatedServers(lazy = false) {
       ollamaMcpServer = new OllamaMCPServer();
       await ollamaMcpServer.start();
       logger.info('Ollama MCP Server iniciado exitosamente');
+      
+      // Registrar servicio en service registry
+      globalServiceRegistry.register({
+        name: 'ollama-mcp-server',
+        version: '1.0.0',
+        host: 'localhost',
+        port: 6002,
+        protocol: 'http',
+        healthEndpoint: '/ollama/health',
+        metadata: {
+          type: 'mcp-server',
+          provider: 'ollama',
+          capabilities: ['local-models', 'streaming']
+        },
+        tags: ['mcp', 'ollama', 'local']
+      });
     } catch (error) {
       logger.warn('Ollama MCP Server no pudo iniciar', { error: error.message });
       logger.warn('Algunas funciones pueden no estar disponibles');
     }
   } else {
     logger.info('Ollama MCP Server ya está corriendo');
+    
+    // Registrar servicio existente
+    globalServiceRegistry.register({
+      name: 'ollama-mcp-server',
+      version: '1.0.0',
+      host: 'localhost',
+      port: 6002,
+      protocol: 'http',
+      healthEndpoint: '/ollama/health',
+      metadata: {
+        type: 'mcp-server',
+        provider: 'ollama',
+        capabilities: ['local-models', 'streaming']
+      },
+      tags: ['mcp', 'ollama', 'local']
+    });
   }
   
   // Verificar Groq API Server (puerto 6003)
@@ -117,12 +152,44 @@ async function startDedicatedServers(lazy = false) {
       groqApiServer = new GroqAPIServer();
       await groqApiServer.start();
       logger.info('Groq API Server iniciado exitosamente');
+      
+      // Registrar servicio en service registry
+      globalServiceRegistry.register({
+        name: 'groq-api-server',
+        version: '1.0.0',
+        host: 'localhost',
+        port: 6003,
+        protocol: 'http',
+        healthEndpoint: '/groq/health',
+        metadata: {
+          type: 'api-server',
+          provider: 'groq',
+          capabilities: ['qwen-models', 'deepseek-models', 'api-keys-rotation']
+        },
+        tags: ['api', 'groq', 'cloud']
+      });
     } catch (error) {
       logger.warn('Groq API Server no pudo iniciar', { error: error.message });
       logger.warn('Algunas funciones pueden no estar disponibles');
     }
   } else {
     logger.info('Groq API Server ya está corriendo');
+    
+    // Registrar servicio existente
+    globalServiceRegistry.register({
+      name: 'groq-api-server',
+      version: '1.0.0',
+      host: 'localhost',
+      port: 6003,
+      protocol: 'http',
+      healthEndpoint: '/groq/health',
+      metadata: {
+        type: 'api-server',
+        provider: 'groq',
+        capabilities: ['qwen-models', 'deepseek-models', 'api-keys-rotation']
+      },
+      tags: ['api', 'groq', 'cloud']
+    });
   }
 }
 
@@ -139,6 +206,21 @@ async function startMCPServer() {
     
     if (started) {
       logger.info('MCP Server iniciado exitosamente', { port });
+      
+      // Registrar servicio en service registry
+      globalServiceRegistry.register({
+        name: 'mcp-universal',
+        version: '1.0.0',
+        host: 'localhost',
+        port: port,
+        protocol: 'http',
+        healthEndpoint: '/health',
+        metadata: {
+          type: 'mcp-server',
+          capabilities: ['execute_code', 'read_file', 'write_file', 'list_files', 'execute_command']
+        },
+        tags: ['mcp', 'universal', 'core']
+      });
     } else {
       logger.warn('MCP Server no pudo iniciar (puerto ocupado)');
       logger.warn('La aplicación continuará, pero algunas funciones pueden no estar disponibles');
@@ -589,9 +671,62 @@ function startAPIServer() {
       res.json({ status: 'ok', service: 'qwen-valencia-api' });
     });
 
+    // API Gateway - Service Registry endpoints
+    apiServer.get('/api/services', (req, res) => {
+      const stats = globalServiceRegistry.getStats();
+      res.json(stats);
+    });
+
+    apiServer.get('/api/services/:name', (req, res) => {
+      const { name } = req.params;
+      const services = globalServiceRegistry.getServices(name, { healthyOnly: false });
+      if (services.length === 0) {
+        return res.status(404).json({ error: `Servicio ${name} no encontrado` });
+      }
+      res.json(services);
+    });
+
+    // API Gateway - Health Aggregator endpoints
+    apiServer.get('/api/health/aggregated', async (req, res) => {
+      const health = await globalHealthAggregator.aggregateHealth();
+      res.json(health);
+    });
+
+    apiServer.get('/api/health/services', (req, res) => {
+      const health = globalHealthAggregator.getAggregatedHealth();
+      res.json(health);
+    });
+
+    // API Gateway - Distributed Tracing endpoints
+    apiServer.get('/api/tracing/stats', (req, res) => {
+      const stats = globalTracer.getStats();
+      res.json(stats);
+    });
+
+    apiServer.get('/api/tracing/spans', (req, res) => {
+      const limit = parseInt(req.query.limit || '100', 10);
+      const spans = globalTracer.getCompletedSpans(limit);
+      res.json(spans);
+    });
+
     const port = 3000; // Puerto para el servidor de API
     apiHttpServer = apiServer.listen(port, () => {
       logger.info('API Server escuchando', { port });
+      
+      // Registrar API Server en service registry
+      globalServiceRegistry.register({
+        name: 'qwen-valencia-api',
+        version: '1.0.0',
+        host: 'localhost',
+        port: port,
+        protocol: 'http',
+        healthEndpoint: '/api/health',
+        metadata: {
+          type: 'api-gateway',
+          capabilities: ['heygen-token', 'service-registry', 'health-aggregation', 'tracing']
+        },
+        tags: ['api', 'gateway', 'core']
+      });
     });
   } catch (error) {
     logger.error('Error iniciando API Server', { error: error.message, stack: error.stack });
@@ -1657,6 +1792,10 @@ app.whenReady().then(async () => {
   // Inicializar Model Router (crítico, cargar primero)
   initializeModelRouter();
   
+  // Iniciar Health Aggregator para monitoreo de servicios
+  globalHealthAggregator.start();
+  logger.info('Health Aggregator iniciado');
+  
   // Crear ventana principal (cargar UI primero para mejor UX)
   createWindow();
   
@@ -1730,6 +1869,12 @@ app.on('before-quit', () => {
   if (tray) {
     destroyTray();
   }
+  
+  // Detener health aggregator
+  globalHealthAggregator.stop();
+  
+  // Cerrar service registry
+  globalServiceRegistry.shutdown();
   
   // Cerrar servidores si es necesario
   if (apiHttpServer) {

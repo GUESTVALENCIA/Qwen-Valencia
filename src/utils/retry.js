@@ -1,142 +1,121 @@
-// ═══════════════════════════════════════════════════════════════════
-// RETRY LOGIC - Retry con Backoff Exponencial y Jitter
-// Manejo inteligente de reintentos para errores transitorios
-// ═══════════════════════════════════════════════════════════════════
+/**
+ * ════════════════════════════════════════════════════════════════════════════
+ * RETRY UTILITY - Estrategias de Reintento Enterprise-Level
+ * Retry con backoff exponencial, jitter y más
+ * ════════════════════════════════════════════════════════════════════════════
+ */
 
-const { isRetryableError } = require('./api-error');
+const { LoggerFactory } = require('./logger');
+
+const logger = LoggerFactory.create({ service: 'retry' });
 
 /**
- * Opciones por defecto para retry
+ * Estrategias de backoff
  */
-const DEFAULT_OPTIONS = {
-  maxRetries: 3,
-  initialDelay: 1000,        // 1 segundo
-  maxDelay: 30000,           // 30 segundos
-  factor: 2,                 // Factor exponencial
-  jitter: true,              // Agregar jitter aleatorio
-  retryableErrors: [429, 500, 502, 503, 504], // Códigos HTTP retryables
-  onRetry: null              // Callback opcional
+const BackoffStrategy = {
+  FIXED: 'fixed',
+  EXPONENTIAL: 'exponential',
+  LINEAR: 'linear'
 };
 
 /**
- * Calcula el delay para el siguiente intento con backoff exponencial
+ * Calcula delay según estrategia
  */
-function calculateDelay(attempt, options) {
-  const { initialDelay, maxDelay, factor, jitter } = options;
+function calculateDelay(attempt, baseDelay, strategy, maxDelay = 60000) {
+  let delay = baseDelay;
   
-  // Backoff exponencial: delay = initialDelay * (factor ^ attempt)
-  let delay = initialDelay * Math.pow(factor, attempt);
-  
-  // Limitar al máximo
-  delay = Math.min(delay, maxDelay);
-  
-  // Agregar jitter aleatorio (0-30% del delay)
-  if (jitter) {
-    const jitterAmount = delay * 0.3 * Math.random();
-    delay = delay + jitterAmount;
+  switch (strategy) {
+    case BackoffStrategy.EXPONENTIAL:
+      delay = baseDelay * Math.pow(2, attempt);
+      break;
+    case BackoffStrategy.LINEAR:
+      delay = baseDelay * (attempt + 1);
+      break;
+    case BackoffStrategy.FIXED:
+    default:
+      delay = baseDelay;
+      break;
   }
   
-  return Math.floor(delay);
+  // Agregar jitter (variación aleatoria)
+  const jitter = Math.random() * 0.3 * delay; // 30% de jitter
+  delay = delay + jitter;
+  
+  // Limitar delay máximo
+  return Math.min(delay, maxDelay);
 }
 
 /**
- * Ejecuta una función con retry automático
+ * Retry con estrategias configurables
  */
 async function retry(fn, options = {}) {
-  const opts = { ...DEFAULT_OPTIONS, ...options };
+  const {
+    maxRetries = 3,
+    retryDelay = 1000,
+    backoffStrategy = BackoffStrategy.EXPONENTIAL,
+    maxDelay = 60000,
+    retryable = (error) => {
+      // Por defecto, reintentar errores de red y 5xx
+      return error.code === 'ECONNREFUSED' ||
+             error.code === 'ETIMEDOUT' ||
+             error.code === 'ENOTFOUND' ||
+             (error.response && error.response.status >= 500);
+    },
+    onRetry = null
+  } = options;
+  
   let lastError;
   
-  for (let attempt = 0; attempt <= opts.maxRetries; attempt++) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const result = await fn();
-      return result;
+      return await fn();
     } catch (error) {
       lastError = error;
       
-      // Verificar si el error es retryable
-      if (!isRetryableError(error)) {
-        throw error;
-      }
-      
-      // Si es el último intento, lanzar el error
-      if (attempt >= opts.maxRetries) {
-        throw error;
-      }
-      
-      // Calcular delay para el siguiente intento
-      const delay = calculateDelay(attempt, opts);
-      
-      // Ejecutar callback de retry si existe
-      if (opts.onRetry) {
-        opts.onRetry(error, attempt + 1, delay);
+      // Si no es el último intento y el error es retryable
+      if (attempt < maxRetries && retryable(error)) {
+        const delay = calculateDelay(attempt, retryDelay, backoffStrategy, maxDelay);
+        
+        if (onRetry) {
+          onRetry(error, attempt + 1, delay);
+        } else {
+          logger.debug('Reintentando operación', {
+            attempt: attempt + 1,
+            maxRetries,
+            delay: `${delay}ms`,
+            error: error.message
+          });
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, delay));
       } else {
-        console.log(`🔄 Reintento ${attempt + 1}/${opts.maxRetries} en ${delay}ms...`);
+        // No más reintentos o error no retryable
+        break;
       }
-      
-      // Esperar antes del siguiente intento
-      await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
   
-  throw lastError;
-}
-
-/**
- * Retry con condición personalizada
- */
-async function retryWithCondition(fn, shouldRetry, options = {}) {
-  const opts = { ...DEFAULT_OPTIONS, ...options };
-  let lastError;
-  
-  for (let attempt = 0; attempt <= opts.maxRetries; attempt++) {
-    try {
-      const result = await fn();
-      return result;
-    } catch (error) {
-      lastError = error;
-      
-      // Verificar condición personalizada
-      if (!shouldRetry(error, attempt)) {
-        throw error;
-      }
-      
-      // Si es el último intento, lanzar el error
-      if (attempt >= opts.maxRetries) {
-        throw error;
-      }
-      
-      const delay = calculateDelay(attempt, opts);
-      
-      if (opts.onRetry) {
-        opts.onRetry(error, attempt + 1, delay);
-      } else {
-        console.log(`🔄 Reintento ${attempt + 1}/${opts.maxRetries} en ${delay}ms...`);
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-  }
-  
+  // Si llegamos aquí, todos los intentos fallaron
   throw lastError;
 }
 
 /**
  * Retry con timeout
  */
-async function retryWithTimeout(fn, timeoutMs, options = {}) {
+async function retryWithTimeout(fn, timeout, options = {}) {
   return Promise.race([
     retry(fn, options),
     new Promise((_, reject) => {
-      setTimeout(() => reject(new Error(`Timeout después de ${timeoutMs}ms`)), timeoutMs);
+      setTimeout(() => {
+        reject(new Error(`Operation timed out after ${timeout}ms`));
+      }, timeout);
     })
   ]);
 }
 
 module.exports = {
   retry,
-  retryWithCondition,
   retryWithTimeout,
-  calculateDelay,
-  DEFAULT_OPTIONS
+  BackoffStrategy,
+  calculateDelay
 };
-
