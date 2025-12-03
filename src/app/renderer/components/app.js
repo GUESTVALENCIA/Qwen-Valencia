@@ -968,17 +968,17 @@ async function sendMessage() {
     // Verificar memoria antes de usar modelos locales (RAM real del sistema)
     const hasLocalModels = modelsToUse.some(modelId => modelId && modelId.includes(':'));
     if (hasLocalModels && !state.useAPI) {
-        // Verificar memoria del sistema de forma asíncrona
-        hasEnoughMemoryForLocalModels().then(hasEnough => {
-            if (!hasEnough) {
-                checkMemoryAvailable().then(memory => {
-                    if (memory) {
-                        const memoryGB = (memory.available / 1024).toFixed(1);
-                        showToast(`⚠️ Memoria RAM del sistema baja (${memoryGB}GB disponible). Los modelos locales requieren al menos 4GB. Considera usar modelos API.`, 'warning');
-                    }
-                });
+        // Verificar memoria del sistema ANTES de enviar el mensaje
+        const hasEnough = await hasEnoughMemoryForLocalModels();
+        if (!hasEnough) {
+            const memory = await checkMemoryAvailable();
+            if (memory) {
+                const memoryGB = (memory.available / 1024).toFixed(1);
+                showToast(`⚠️ Memoria RAM del sistema baja (${memoryGB}GB disponible). Los modelos locales requieren al menos 4GB. Considera usar modelos API.`, 'warning');
+                // No bloquear completamente, pero advertir al usuario
+                // El usuario puede decidir continuar o cancelar
             }
-        });
+        }
     }
     
     addMessage('user', message, state.attachedImage);
