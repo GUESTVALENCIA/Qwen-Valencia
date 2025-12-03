@@ -16,9 +16,12 @@ const APIKeyCleaner = require('../utils/api-key-cleaner');
 const { APIError, isRetryableError, extractErrorInfo } = require('../utils/api-error');
 const { circuitBreakerManager } = require('../utils/circuit-breaker');
 const { retry } = require('../utils/retry');
+const { LoggerFactory } = require('../utils/logger');
 
 class QwenExecutor {
   constructor(config = {}) {
+    this.logger = LoggerFactory.create({ service: 'qwen-executor' });
+    
     // Limpiar y validar API key de Groq si existe
     let groqApiKey = config.groqApiKey || process.env.GROQ_API_KEY;
     if (groqApiKey) {
@@ -28,11 +31,13 @@ class QwenExecutor {
       const cleaned = APIKeyCleaner.cleanAndValidateGroq(groqApiKey);
       if (cleaned.valid) {
         groqApiKey = cleaned.cleaned;
-        console.log(`✅ API Key de Groq validada (longitud: ${groqApiKey.length})`);
+        this.logger.info('API Key de Groq validada', { length: groqApiKey.length });
       } else {
-        console.error(`❌ API Key de Groq inválida: ${cleaned.error}`);
-        console.error(`   Longitud actual: ${cleaned.cleaned.length}`);
-        console.error(`   Primeros 20 caracteres: ${cleaned.cleaned.substring(0, 20)}...`);
+        this.logger.error('API Key de Groq inválida', { 
+          error: cleaned.error, 
+          length: cleaned.cleaned.length,
+          preview: cleaned.cleaned.substring(0, 20)
+        });
         throw new Error(`GROQ_API_KEY inválida: ${cleaned.error}. Verifica tu GROQ_API_KEY en qwen-valencia.env`);
       }
     }
@@ -49,7 +54,7 @@ class QwenExecutor {
       mcpSecret: config.mcpSecret || process.env.MCP_SECRET_KEY
     };
     
-    console.log('✅ QwenExecutor inicializado (NÚCLEO EJECUTOR PURO)');
+    this.logger.info('QwenExecutor inicializado (NÚCLEO EJECUTOR PURO)');
   }
 
   /**
@@ -126,7 +131,7 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
     if (!modelToUse) {
       // Modelo por defecto Qwen en Groq
       modelToUse = 'qwen2.5-72b-instruct';
-      console.warn('⚠️ No se especificó modelo, usando Qwen por defecto:', modelToUse);
+      this.logger.warn('No se especificó modelo, usando Qwen por defecto', { model: modelToUse });
     }
     
     const messages = [
@@ -167,7 +172,7 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
         if (serverError.code === 'ECONNREFUSED' || 
             serverError.response?.status >= 500 || 
             serverError.response?.status === 401) {
-          console.warn('⚠️ Servidor Groq no disponible o error 401, intentando llamada directa...');
+          this.logger.warn('Servidor Groq no disponible o error 401, intentando llamada directa');
           
           if (!this.config.groqApiKey) {
             throw new Error('GROQ_API_KEY no configurada. Configúrala en qwen-valencia.env');
@@ -225,7 +230,7 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
       );
       return response.data?.available === true;
     } catch (error) {
-      console.warn(`⚠️ No se pudo verificar disponibilidad del modelo ${modelName}:`, error.message);
+      this.logger.warn('No se pudo verificar disponibilidad del modelo', { model: modelName, error: error.message });
       return false; // Si no se puede verificar, asumir que no está disponible
     }
   }
@@ -240,7 +245,7 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
     if (!modelToUse) {
       // Modelo por defecto si no hay ninguno
       modelToUse = 'qwen2.5:7b-instruct';
-      console.warn('⚠️ No se especificó modelo Ollama, usando por defecto:', modelToUse);
+      this.logger.warn('No se especificó modelo Ollama, usando por defecto', { model: modelToUse });
     }
     
     // Verificar que el modelo esté disponible antes de intentar usarlo
@@ -258,7 +263,7 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
     if (modelToUse.includes('-q4_K_M') || modelToUse.includes('-q4') || modelToUse.includes('-q5')) {
       // Si tiene sufijo, intentar primero con sufijo, luego sin él
       const baseModel = modelToUse.split('-q')[0];
-      console.log(`🔍 Modelo con sufijo detectado: ${modelToUse}, base: ${baseModel}`);
+      this.logger.debug('Modelo con sufijo detectado', { model: modelToUse, base: baseModel });
     }
     
     // Usar servidor MCP dedicado de Ollama
@@ -432,7 +437,7 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
       // Si modo es 'groq' o 'auto' con API key, intentar Groq primero
       if ((this.config.mode === 'groq' || this.config.mode === 'auto') && this.config.groqApiKey) {
         if (!groqBreaker.isAvailable()) {
-          console.warn('⚠️ Circuit breaker Groq está OPEN, saltando a Ollama...');
+          this.logger.warn('Circuit breaker Groq está OPEN, saltando a Ollama');
         } else {
           try {
             const startTime = Date.now();
@@ -442,13 +447,13 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
                 {
                   maxRetries: 2,
                   onRetry: (error, attempt, delay) => {
-                    console.log(`🔄 Reintento Groq ${attempt} en ${delay}ms...`);
+                    this.logger.debug('Reintento Groq', { attempt, delay });
                   }
                 }
               )
             );
             const duration = Date.now() - startTime;
-            console.log(`⚡ Qwen via Groq respondió en ${duration}ms`);
+            this.logger.debug('Qwen via Groq respondió', { duration });
             return response;
           } catch (error) {
             groqError = error;
@@ -456,7 +461,7 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
             
             // Si es error 401/429, intentar fallback a Ollama
             if (this.shouldFallbackToOllama(error) && this.config.ollamaBaseUrl) {
-              console.warn(`⚠️ Error con Groq (${errorInfo.statusCode}), intentando fallback a Ollama...`);
+              this.logger.warn('Error con Groq, intentando fallback a Ollama', { statusCode: errorInfo.statusCode });
             } else {
               // Si no es retryable o no hay Ollama, lanzar error
               if (this.config.mode === 'groq') {
@@ -474,7 +479,7 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
       // Fallback a Ollama si Groq falló o no está disponible
       if (this.config.ollamaBaseUrl) {
         if (!ollamaBreaker.isAvailable()) {
-          console.warn('⚠️ Circuit breaker Ollama está OPEN');
+          this.logger.warn('Circuit breaker Ollama está OPEN');
           throw APIError.ollamaNotAvailable({ circuitBreakerOpen: true });
         }
         
@@ -486,13 +491,13 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
               {
                 maxRetries: 2,
                 onRetry: (error, attempt, delay) => {
-                  console.log(`🔄 Reintento Ollama ${attempt} en ${delay}ms...`);
+                  this.logger.debug('Reintento Ollama', { attempt, delay });
                 }
               }
             )
           );
           const duration = Date.now() - startTime;
-          console.log(`🔄 Qwen via Ollama respondió en ${duration}ms`);
+          this.logger.debug('Qwen via Ollama respondió', { duration });
           return response;
         } catch (error) {
           ollamaError = error;

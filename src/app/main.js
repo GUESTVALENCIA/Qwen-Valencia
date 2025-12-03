@@ -21,9 +21,13 @@ const OllamaMCPServer = require('../mcp/ollama-mcp-server');
 const GroqAPIServer = require('../mcp/groq-api-server');
 const variablesLoader = require('../utils/variables-loader');
 const HeyGenTokenService = require('../services/heygen-token-service');
+const { LoggerFactory } = require('../utils/logger');
+
+// Inicializar logger estructurado
+const logger = LoggerFactory.create({ service: 'electron-main' });
 
 // Cargar variables desde qwen-valencia.env (archivo único, sin conflictos)
-console.log('🔧 Cargando variables desde qwen-valencia.env...');
+logger.info('Cargando variables desde qwen-valencia.env');
 variablesLoader.load();
 
 let mainWindow;
@@ -57,32 +61,32 @@ async function startDedicatedServers() {
   const ollamaRunning = await checkServerHealth('http://localhost:6002/ollama/health');
   if (!ollamaRunning) {
     try {
-      console.log('🚀 Iniciando Ollama MCP Server...');
+      logger.info('Iniciando Ollama MCP Server');
       ollamaMcpServer = new OllamaMCPServer();
       await ollamaMcpServer.start();
-      console.log('✅ Ollama MCP Server iniciado');
+      logger.info('Ollama MCP Server iniciado exitosamente');
     } catch (error) {
-      console.warn('⚠️ Ollama MCP Server no pudo iniciar:', error.message);
-      console.warn('⚠️ Algunas funciones pueden no estar disponibles');
+      logger.warn('Ollama MCP Server no pudo iniciar', { error: error.message });
+      logger.warn('Algunas funciones pueden no estar disponibles');
     }
   } else {
-    console.log('✅ Ollama MCP Server ya está corriendo');
+    logger.info('Ollama MCP Server ya está corriendo');
   }
   
   // Verificar Groq API Server (puerto 6003)
   const groqRunning = await checkServerHealth('http://localhost:6003/groq/health');
   if (!groqRunning) {
     try {
-      console.log('🚀 Iniciando Groq API Server...');
+      logger.info('Iniciando Groq API Server');
       groqApiServer = new GroqAPIServer();
       await groqApiServer.start();
-      console.log('✅ Groq API Server iniciado');
+      logger.info('Groq API Server iniciado exitosamente');
     } catch (error) {
-      console.warn('⚠️ Groq API Server no pudo iniciar:', error.message);
-      console.warn('⚠️ Algunas funciones pueden no estar disponibles');
+      logger.warn('Groq API Server no pudo iniciar', { error: error.message });
+      logger.warn('Algunas funciones pueden no estar disponibles');
     }
   } else {
-    console.log('✅ Groq API Server ya está corriendo');
+    logger.info('Groq API Server ya está corriendo');
   }
 }
 
@@ -95,14 +99,14 @@ async function startMCPServer() {
     const started = await mcpServer.start();
     
     if (started) {
-      console.log('✅ MCP Server iniciado');
+      logger.info('MCP Server iniciado exitosamente');
     } else {
-      console.warn('⚠️ MCP Server no pudo iniciar (puerto ocupado)');
-      console.warn('⚠️ La aplicación continuará, pero algunas funciones pueden no estar disponibles');
+      logger.warn('MCP Server no pudo iniciar (puerto ocupado)');
+      logger.warn('La aplicación continuará, pero algunas funciones pueden no estar disponibles');
     }
   } catch (error) {
-    console.error('❌ Error iniciando MCP Server:', error);
-    console.warn('⚠️ La aplicación continuará, pero algunas funciones pueden no estar disponibles');
+    logger.error('Error iniciando MCP Server', { error: error.message, stack: error.stack });
+    logger.warn('La aplicación continuará, pero algunas funciones pueden no estar disponibles');
   }
 }
 
@@ -146,16 +150,19 @@ function initializeModelRouter() {
     
     // Validar formato básico
     if (groqApiKey.length < 20) {
-      console.error(`❌ GROQ_API_KEY demasiado corta (${groqApiKey.length} caracteres). Debe tener al menos 20 caracteres.`);
-      console.error(`   Primeros caracteres: ${groqApiKey.substring(0, 20)}...`);
+      logger.error('GROQ_API_KEY demasiado corta', { 
+        length: groqApiKey.length, 
+        preview: groqApiKey.substring(0, 20) 
+      });
     } else if (!groqApiKey.startsWith('gsk_')) {
-      console.error(`❌ GROQ_API_KEY no tiene el formato correcto. Debe empezar con 'gsk_'.`);
-      console.error(`   Primeros caracteres: ${groqApiKey.substring(0, 10)}...`);
+      logger.error('GROQ_API_KEY no tiene el formato correcto', { 
+        preview: groqApiKey.substring(0, 10) 
+      });
     } else {
-      console.log(`✅ API Key de Groq cargada y limpiada (longitud: ${groqApiKey.length})`);
+      logger.info('API Key de Groq cargada y limpiada', { length: groqApiKey.length });
     }
   } else {
-    console.warn('⚠️ GROQ_API_KEY no encontrada');
+    logger.warn('GROQ_API_KEY no encontrada');
   }
   
   modelRouter = new ModelRouter({
@@ -166,7 +173,7 @@ function initializeModelRouter() {
     mcpSecret: process.env.MCP_SECRET_KEY || 'qwen_valencia_mcp_secure_2025'
   });
   
-  console.log('✅ Model Router inicializado');
+  logger.info('Model Router inicializado');
 }
 
 /**
@@ -208,11 +215,11 @@ function startAPIServer() {
 
     const port = 3000; // Puerto para el servidor de API
     apiHttpServer = apiServer.listen(port, () => {
-      console.log(`✅ API Server escuchando en http://localhost:${port}`);
+      logger.info('API Server escuchando', { port });
     });
   } catch (error) {
-    console.error('❌ Error iniciando API Server:', error);
-    console.warn('⚠️ Algunas funciones pueden no estar disponibles');
+    logger.error('Error iniciando API Server', { error: error.message, stack: error.stack });
+    logger.warn('Algunas funciones pueden no estar disponibles');
   }
 }
 
@@ -246,7 +253,7 @@ ipcMain.handle('route-message', async (event, params) => {
     const result = await modelRouter.route(text, modality, attachments, options);
     return result;
   } catch (error) {
-    console.error('❌ Error en route-message:', error);
+    logger.error('Error en route-message', { error: error.message, stack: error.stack });
     return {
       success: false,
       error: error.message
@@ -266,7 +273,7 @@ ipcMain.handle('execute-code', async (event, { language, code }) => {
     const result = await modelRouter.executeCode(language, code);
     return result;
   } catch (error) {
-    console.error('❌ Error ejecutando código:', error);
+    logger.error('Error ejecutando código', { error: error.message, stack: error.stack });
     return {
       success: false,
       error: error.message
@@ -286,7 +293,7 @@ ipcMain.handle('read-file', async (event, { filePath }) => {
     const result = await modelRouter.readFile(filePath);
     return result;
   } catch (error) {
-    console.error('❌ Error leyendo archivo:', error);
+    logger.error('Error leyendo archivo', { error: error.message, stack: error.stack });
     return {
       success: false,
       error: error.message
@@ -306,7 +313,7 @@ ipcMain.handle('list-files', async (event, { dirPath }) => {
     const result = await modelRouter.listFiles(dirPath);
     return result;
   } catch (error) {
-    console.error('❌ Error listando archivos:', error);
+    logger.error('Error listando archivos', { error: error.message, stack: error.stack });
     return {
       success: false,
       error: error.message
@@ -341,7 +348,7 @@ ipcMain.handle('generate-speech', async (event, { text, options = {} }) => {
       error: 'No se pudo generar audio'
     };
   } catch (error) {
-    console.error('❌ Error generando speech:', error);
+    logger.error('Error generando speech', { error: error.message, stack: error.stack });
     return {
       success: false,
       error: error.message
@@ -381,7 +388,7 @@ ipcMain.handle('cartesia-tts', async (event, params) => {
       error: 'No se pudo generar audio'
     };
   } catch (error) {
-    console.error('❌ Error en cartesia-tts:', error);
+    logger.error('Error en cartesia-tts', { error: error.message, stack: error.stack });
     return {
       success: false,
       error: error.message
@@ -400,7 +407,7 @@ ipcMain.handle('execute-in-lab', async (event, { language, code, options = {} })
     const result = await lab.executeCode(language, code, options);
     return result;
   } catch (error) {
-    console.error('❌ Error ejecutando en laboratorio:', error);
+    logger.error('Error ejecutando en laboratorio', { error: error.message, stack: error.stack });
     return {
       success: false,
       error: error.message
@@ -420,7 +427,7 @@ ipcMain.handle('transcribe-audio', async (event, { audio, mimeType }) => {
       error: 'Backend de transcripción no implementado. Usando Web Speech API.'
     };
   } catch (error) {
-    console.error('❌ Error transcribiendo audio:', error);
+    logger.error('Error transcribiendo audio', { error: error.message, stack: error.stack });
     return {
       success: false,
       error: error.message
@@ -451,7 +458,7 @@ ipcMain.handle('deepgram-transcribe', async (event, params) => {
       transcript: result.transcript || ''
     };
   } catch (error) {
-    console.error('❌ Error en deepgram-transcribe:', error);
+    logger.error('Error en deepgram-transcribe', { error: error.message, stack: error.stack });
     return {
       success: false,
       error: error.message
@@ -497,7 +504,7 @@ ipcMain.handle('deepgram-start-live', async (event) => {
       connectionId: result.connectionId
     };
   } catch (error) {
-    console.error('❌ Error iniciando DeepGram Live:', error);
+    logger.error('Error iniciando DeepGram Live', { error: error.message, stack: error.stack });
     return {
       success: false,
       error: error.message
@@ -518,7 +525,7 @@ ipcMain.handle('deepgram-stop-live', async (event) => {
       success: true
     };
   } catch (error) {
-    console.error('❌ Error deteniendo DeepGram Live:', error);
+    logger.error('Error deteniendo DeepGram Live', { error: error.message, stack: error.stack });
     return {
       success: false,
       error: error.message
@@ -555,7 +562,7 @@ ipcMain.handle('deepgram-send-audio', async (event, { audio }) => {
       success: true
     };
   } catch (error) {
-    console.error('❌ Error enviando audio a DeepGram:', error);
+    logger.error('Error enviando audio a DeepGram', { error: error.message, stack: error.stack });
     return {
       success: false,
       error: error.message
@@ -604,7 +611,7 @@ ipcMain.handle('start-conversation', async (event, { mode = 'text', userId = nul
 
     return result;
   } catch (error) {
-    console.error('❌ Error iniciando conversación:', error);
+    logger.error('Error iniciando conversación', { error: error.message, stack: error.stack });
     return {
       success: false,
       error: error.message
@@ -623,7 +630,7 @@ ipcMain.handle('stop-conversation', async (event) => {
     }
     return { success: true };
   } catch (error) {
-    console.error('❌ Error deteniendo conversación:', error);
+    logger.error('Error deteniendo conversación', { error: error.message, stack: error.stack });
     return {
       success: false,
       error: error.message
@@ -645,7 +652,7 @@ ipcMain.handle('send-audio-to-conversation', async (event, { audioBuffer }) => {
       error: 'Conversación no activa'
     };
   } catch (error) {
-    console.error('❌ Error enviando audio:', error);
+    logger.error('Error enviando audio', { error: error.message, stack: error.stack });
     return {
       success: false,
       error: error.message
@@ -705,7 +712,7 @@ ipcMain.handle('create-floating-avatar-window', async (event, { videoSrc }) => {
       windowId: avatarWindow.id
     };
   } catch (error) {
-    console.error('❌ Error creando ventana flotante:', error);
+    logger.error('Error creando ventana flotante', { error: error.message, stack: error.stack });
     return {
       success: false,
       error: error.message
@@ -732,7 +739,7 @@ ipcMain.handle('start-mcp-master', async (event) => {
       message: 'MCP Server iniciado'
     };
   } catch (error) {
-    console.error('❌ Error iniciando MCP Master:', error);
+    logger.error('Error iniciando MCP Master', { error: error.message, stack: error.stack });
     return {
       success: false,
       error: error.message
@@ -755,7 +762,7 @@ ipcMain.handle('stop-mcp-master', async (event) => {
       message: 'MCP Server detenido'
     };
   } catch (error) {
-    console.error('❌ Error deteniendo MCP Master:', error);
+    logger.error('Error deteniendo MCP Master', { error: error.message, stack: error.stack });
     return {
       success: false,
       error: error.message
@@ -773,7 +780,7 @@ ipcMain.handle('get-mcp-master-status', async (event) => {
       port: mcpServer ? mcpServer.port : null
     };
   } catch (error) {
-    console.error('❌ Error obteniendo estado MCP:', error);
+    logger.error('Error obteniendo estado MCP', { error: error.message, stack: error.stack });
     return {
       running: false,
       error: error.message
@@ -798,7 +805,7 @@ ipcMain.handle('get-system-memory', async (event) => {
       percentage: (usedBytes / totalBytes) * 100
     };
   } catch (error) {
-    console.error('❌ Error obteniendo memoria del sistema:', error);
+    logger.error('Error obteniendo memoria del sistema', { error: error.message, stack: error.stack });
     return null;
   }
 });
@@ -865,7 +872,7 @@ app.on('before-quit', () => {
   // Cerrar servidores si es necesario
   if (apiHttpServer) {
     apiHttpServer.close(() => {
-      console.log('✅ API Server cerrado');
+      logger.info('API Server cerrado');
     });
   }
   if (mcpServer && mcpServer.server) {
