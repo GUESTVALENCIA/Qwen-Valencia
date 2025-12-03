@@ -248,12 +248,16 @@ const defaultLogger = LoggerFactory.create();
 if (typeof window !== 'undefined') {
   window.logger = defaultLogger;
   window.LoggerFactory = LoggerFactory;
+  window.defaultLogger = defaultLogger;
 }
 
-module.exports = {
-  Logger,
-  LoggerFactory,
-  LogLevel,
-  defaultLogger
-};
+// Solo exportar si estamos en Node.js (no en navegador)
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    Logger,
+    LoggerFactory,
+    LogLevel,
+    defaultLogger
+  };
+}
 

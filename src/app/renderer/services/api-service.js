@@ -3,8 +3,11 @@
 // Comunicación con backend, manejo de errores, retry logic
 // ═══════════════════════════════════════════════════════════════════
 
-const { defaultLogger } = require('../utils/logger');
-const { handleAPIError } = require('../utils/error-handler');
+// No usar require() en el navegador - usar window.defaultLogger y window.handleAPIError
+
+/**
+ * @typedef {import('../../../types')} Types
+ */
 
 /**
  * API Service centralizado
@@ -15,7 +18,7 @@ class APIService {
     this.timeout = options.timeout || 30000;
     this.retryAttempts = options.retryAttempts || 3;
     this.retryDelay = options.retryDelay || 1000;
-    this.logger = defaultLogger;
+    this.logger = (typeof window !== 'undefined' && window.defaultLogger) || console;
     this.correlationId = null;
   }
 
@@ -86,6 +89,9 @@ class APIService {
 
   /**
    * Request genérico
+   * @param {string} endpoint - Endpoint de la API
+   * @param {Types.APIRequest} options - Opciones de la petición
+   * @returns {Promise<Types.APIResponse>} Respuesta de la API
    */
   async request(endpoint, options = {}) {
     const url = endpoint.startsWith('http') ? endpoint : `${this.baseURL}${endpoint}`;
@@ -171,7 +177,8 @@ class APIService {
       });
 
       // Usar error handler centralizado
-      handleAPIError(error, 'api-service', { 
+      if (typeof window !== 'undefined' && window.handleAPIError) {
+        window.handleAPIError(error, 'api-service', { 
         method, 
         url, 
         correlationId 

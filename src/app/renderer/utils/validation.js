@@ -219,5 +219,8 @@ if (typeof window !== 'undefined') {
   window.FrontendValidator = FrontendValidator;
 }
 
-module.exports = FrontendValidator;
+// Solo exportar si estamos en Node.js (no en navegador)
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = FrontendValidator;
+}
 

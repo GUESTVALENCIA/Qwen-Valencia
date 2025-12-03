@@ -3,7 +3,7 @@
 // Delegación de eventos, cleanup automático, eventos personalizados
 // ═══════════════════════════════════════════════════════════════════
 
-const { defaultLogger } = require('../utils/logger');
+// No usar require() en el navegador - usar window.defaultLogger
 
 /**
  * Event Manager centralizado
@@ -13,7 +13,7 @@ class EventManager {
     this.listeners = new Map();
     this.delegatedListeners = new Map();
     this.customEvents = new Map();
-    this.logger = defaultLogger;
+    this.logger = (typeof window !== 'undefined' && window.defaultLogger) || console;
   }
 
   /**
@@ -313,9 +313,19 @@ if (typeof window !== 'undefined') {
   window.getEventManager = getEventManager;
 }
 
-module.exports = {
-  EventManager,
-  createEventManager,
-  getEventManager
-};
+// Solo exportar si estamos en Node.js (no en navegador)
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    EventManager,
+    createEventManager,
+    getEventManager
+  };
+}
+
+// Exportar para uso global en el navegador
+if (typeof window !== 'undefined') {
+  window.EventManager = EventManager;
+  window.createEventManager = createEventManager;
+  window.getEventManager = getEventManager;
+}
 

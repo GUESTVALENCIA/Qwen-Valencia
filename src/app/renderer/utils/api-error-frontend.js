@@ -230,9 +230,12 @@ if (typeof window !== 'undefined') {
   window.toAPIError = toAPIError;
 }
 
-module.exports = {
-  APIError,
-  ErrorCodes,
-  toAPIError
-};
+// Solo exportar si estamos en Node.js (no en navegador)
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    APIError,
+    ErrorCodes,
+    toAPIError
+  };
+}
 

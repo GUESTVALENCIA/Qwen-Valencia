@@ -3,7 +3,7 @@
 // Estado reactivo con observadores, validación y persistencia
 // ═══════════════════════════════════════════════════════════════════
 
-const { defaultLogger } = require('../utils/logger');
+// No usar require() en el navegador - usar window.defaultLogger
 
 /**
  * State Manager centralizado
@@ -17,7 +17,7 @@ class StateManager {
     this.maxHistorySize = options.maxHistorySize || 50;
     this.enablePersistence = options.enablePersistence !== false;
     this.persistenceKey = options.persistenceKey || 'qwen-valencia-state';
-    this.logger = defaultLogger;
+    this.logger = (typeof window !== 'undefined' && window.defaultLogger) || console;
     
     // Cargar estado persistido
     if (this.enablePersistence) {
@@ -315,9 +315,19 @@ if (typeof window !== 'undefined') {
   window.getStateManager = getStateManager;
 }
 
-module.exports = {
-  StateManager,
-  createStateManager,
-  getStateManager
-};
+// Solo exportar si estamos en Node.js (no en navegador)
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    StateManager,
+    createStateManager,
+    getStateManager
+  };
+}
+
+// Exportar para uso global en el navegador
+if (typeof window !== 'undefined') {
+  window.StateManager = StateManager;
+  window.createStateManager = createStateManager;
+  window.getStateManager = getStateManager;
+}
 
