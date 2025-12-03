@@ -925,6 +925,43 @@ async function sendMessage() {
         if (errorMessage.includes('Invalid character in header')) {
             userFriendlyMessage = '⚠️ Error de autenticación con Groq API\n\n💡 La API key contiene caracteres inválidos. Verifica que GROQ_API_KEY en qwen-valencia.env esté correctamente configurada sin espacios ni caracteres especiales.';
             showToast('Error de autenticación - Verifica GROQ_API_KEY', 'error');
+        // Intentar parsear error como APIError estándar
+        let parsedError = null;
+        try {
+            // Buscar JSON de error en el mensaje
+            const errorMatch = errorMessage.match(/\{[^}]+\}/);
+            if (errorMatch) {
+                parsedError = JSON.parse(errorMatch[0]);
+            }
+        } catch (e) {
+            // No es JSON, continuar con manejo tradicional
+        }
+        
+        if (parsedError && parsedError.error) {
+            // Error estándar APIError
+            const apiError = parsedError.error;
+            const code = apiError.code || 'UNKNOWN';
+            const message = apiError.message || errorMessage;
+            const details = apiError.details || {};
+            
+            if (code.includes('API_KEY_INVALID') || code.includes('AUTH_REQUIRED')) {
+                userFriendlyMessage = `⚠️ ${message}\n\n💡 Solución: Verifica que GROQ_API_KEY esté correctamente configurada en qwen-valencia.env sin espacios ni caracteres especiales.`;
+                showToast('Error de API Key - Verifica qwen-valencia.env', 'error');
+            } else if (code.includes('RATE_LIMIT') || code.includes('TOO_MANY_REQUESTS')) {
+                const retryAfter = details.retryAfter ? ` Reintenta después de ${details.retryAfter}s.` : '';
+                userFriendlyMessage = `⚠️ ${message}${retryAfter}\n\n💡 Has excedido el límite de requests. Espera unos momentos e intenta de nuevo.`;
+                showToast('Rate limit alcanzado - Espera un momento', 'warning');
+            } else if (code.includes('MODEL_NOT_FOUND') || code.includes('OLLAMA')) {
+                const modelName = details.model || modelsToUse[0] || 'qwen2.5:7b-instruct';
+                userFriendlyMessage = `⚠️ ${message}\n\n💡 Soluciones:\n1. Verifica que Ollama esté corriendo: \`ollama serve\`\n2. Descarga el modelo: \`ollama pull ${modelName}\`\n3. Verifica que el nombre del modelo sea correcto`;
+                showToast('Modelo no encontrado', 'warning');
+            } else if (code.includes('ALL_PROVIDERS_FAILED')) {
+                userFriendlyMessage = `⚠️ ${message}\n\n💡 Todos los proveedores fallaron. Verifica:\n1. GROQ_API_KEY en qwen-valencia.env\n2. Ollama corriendo y modelos instalados\n3. Conexión a internet`;
+                showToast('Todos los proveedores fallaron', 'error');
+            } else {
+                userFriendlyMessage = `⚠️ ${message}\n\n💡 Si el problema persiste, verifica la configuración en qwen-valencia.env`;
+                showToast('Error al procesar mensaje', 'error');
+            }
         } else if (errorMessage.includes('404') && errorMessage.includes('Groq')) {
             userFriendlyMessage = '⚠️ Error conectando con Groq API (404)\n\n💡 Verifica que:\n1. GROQ_API_KEY esté correcta en qwen-valencia.env\n2. La API key tenga el formato correcto (debe empezar con "gsk_")\n3. No haya espacios o caracteres especiales en la key';
             showToast('Error 404 - Verifica GROQ_API_KEY', 'error');
