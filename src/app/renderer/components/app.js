@@ -3,7 +3,43 @@
 // ═══════════════════════════════════════════════════════════════════
 // Adaptado de Sandra Studio Ultimate para Qwen-Valencia
 // Solo modelos Qwen y DeepSeek (Ollama y Groq)
+// Optimizado: 6+ modelos API, 2 modelos locales ligeros
 // ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Verificar memoria RAM disponible
+ * @returns {object} Información de memoria disponible
+ */
+function checkMemoryAvailable() {
+    if (typeof performance !== 'undefined' && performance.memory) {
+        const memory = performance.memory;
+        const totalMB = memory.jsHeapSizeLimit / (1024 * 1024);
+        const usedMB = memory.usedJSHeapSize / (1024 * 1024);
+        const availableMB = totalMB - usedMB;
+        
+        return {
+            total: totalMB,
+            used: usedMB,
+            available: availableMB,
+            percentage: (usedMB / totalMB) * 100
+        };
+    }
+    return null;
+}
+
+/**
+ * Verificar si hay suficiente memoria para modelos locales
+ * @returns {boolean} true si hay suficiente memoria
+ */
+function hasEnoughMemoryForLocalModels() {
+    const memory = checkMemoryAvailable();
+    if (!memory) return true; // Si no se puede verificar, asumir que hay suficiente
+    
+    // Advertir si hay menos de 8GB disponibles (aproximado)
+    // Los modelos locales requieren al menos 4-6GB de RAM libre
+    const minRequiredMB = 4096; // 4GB mínimo
+    return memory.available >= minRequiredMB;
+}
 
 // Estado global
 const state = {
@@ -47,8 +83,9 @@ let avatarPaused = false;
 // Funciones globales se exponen al final del archivo
 
 // Modelos disponibles - Solo Qwen y DeepSeek
+// Optimizado: 6+ modelos API, 2 modelos locales ligeros
 const MODELS = {
-    // Ollama Local - Qwen
+    // Ollama Local - Solo 2 modelos ligeros
     'qwen2.5:7b-instruct': { 
         name: 'Qwen 2.5 7B', 
         provider: 'Ollama', 
@@ -57,29 +94,7 @@ const MODELS = {
         category: 'Chat', 
         compact: 'Q2.5 7B',
         capabilities: ['Conversación natural', 'Respuestas rápidas', 'Multilenguaje'],
-        description: 'Modelo conversacional rápido y eficiente. Ideal para chats generales y respuestas rápidas.'
-    },
-    'qwen2.5vl:3b': { 
-        name: 'Qwen 2.5 VL', 
-        provider: 'Ollama', 
-        tokens: '32K', 
-        version: '2.5', 
-        category: 'Visión', 
-        compact: 'Q2.5 VL',
-        capabilities: ['Análisis de imágenes', 'OCR', 'Descripción visual', 'Multimodal'],
-        description: 'Modelo de visión multimodal. Puede analizar imágenes, extraer texto y describir contenido visual.'
-    },
-    
-    // Ollama Local - DeepSeek
-    'deepseek-r1:7b': { 
-        name: 'DeepSeek R1 7B', 
-        provider: 'Ollama', 
-        tokens: '32K', 
-        version: 'R1', 
-        category: 'Razonamiento', 
-        compact: 'DS R1 7B',
-        capabilities: ['Razonamiento profundo', 'Análisis complejo', 'Inferencia lógica'],
-        description: 'Modelo especializado en razonamiento y análisis profundo. Ideal para tareas que requieren pensamiento lógico complejo y deducción.'
+        description: 'Modelo conversacional rápido y eficiente. Ideal para chats generales y respuestas rápidas. Modelo local ligero.'
     },
     'deepseek-coder:6.7b': { 
         name: 'DeepSeek Coder', 
@@ -89,10 +104,10 @@ const MODELS = {
         category: 'Código', 
         compact: 'DS Coder',
         capabilities: ['Generación de código', 'Debugging', 'Refactoring', 'Múltiples lenguajes'],
-        description: 'Modelo especializado en programación. Excelente para escribir, depurar y refactorizar código en múltiples lenguajes.'
+        description: 'Modelo especializado en programación. Excelente para escribir, depurar y refactorizar código en múltiples lenguajes. Modelo local ligero.'
     },
     
-    // Groq API - Qwen
+    // Groq API - Qwen (4 modelos)
     'qwen-2.5-72b-instruct': { 
         name: 'Qwen 2.5 72B (Groq)', 
         provider: 'Groq', 
@@ -100,11 +115,41 @@ const MODELS = {
         version: '2.5', 
         category: 'API', 
         compact: 'Q2.5 72B API',
-        capabilities: ['API rápida', 'Respuestas instantáneas', 'Sin GPU local'],
-        description: 'Qwen 2.5 72B vía Groq API. Ultra rápido y sin necesidad de GPU local.'
+        capabilities: ['API rápida', 'Respuestas instantáneas', 'Sin GPU local', 'Máxima potencia'],
+        description: 'Qwen 2.5 72B vía Groq API. Ultra rápido y sin necesidad de GPU local. Modelo más potente de Qwen.'
+    },
+    'qwen-2.5-32b-instruct': { 
+        name: 'Qwen 2.5 32B (Groq)', 
+        provider: 'Groq', 
+        tokens: '32K', 
+        version: '2.5', 
+        category: 'API', 
+        compact: 'Q2.5 32B API',
+        capabilities: ['API rápida', 'Balanceado', 'Sin GPU local'],
+        description: 'Qwen 2.5 32B vía Groq API. Balance perfecto entre potencia y velocidad.'
+    },
+    'qwen-2.5-14b-instruct': { 
+        name: 'Qwen 2.5 14B (Groq)', 
+        provider: 'Groq', 
+        tokens: '32K', 
+        version: '2.5', 
+        category: 'API', 
+        compact: 'Q2.5 14B API',
+        capabilities: ['API rápida', 'Rápido', 'Sin GPU local'],
+        description: 'Qwen 2.5 14B vía Groq API. Rápido y eficiente para tareas generales.'
+    },
+    'qwen-2.5-7b-instruct': { 
+        name: 'Qwen 2.5 7B (Groq)', 
+        provider: 'Groq', 
+        tokens: '32K', 
+        version: '2.5', 
+        category: 'API', 
+        compact: 'Q2.5 7B API',
+        capabilities: ['API rápida', 'Ultra rápido', 'Sin GPU local'],
+        description: 'Qwen 2.5 7B vía Groq API. Ultra rápido para respuestas instantáneas.'
     },
     
-    // Groq API - DeepSeek
+    // Groq API - DeepSeek (3 modelos)
     'deepseek-r1-distill-llama-70b': { 
         name: 'DeepSeek R1 70B (Groq)', 
         provider: 'Groq', 
@@ -112,8 +157,28 @@ const MODELS = {
         version: 'R1', 
         category: 'API', 
         compact: 'DS R1 70B API',
-        capabilities: ['Razonamiento API', 'Ultra rápido', 'Sin GPU local'],
-        description: 'DeepSeek R1 vía Groq API. Razonamiento profundo con velocidad extrema.'
+        capabilities: ['Razonamiento API', 'Ultra rápido', 'Sin GPU local', 'Máxima potencia'],
+        description: 'DeepSeek R1 70B vía Groq API. Razonamiento profundo con velocidad extrema. Modelo más potente de DeepSeek.'
+    },
+    'deepseek-r1-distill-qwen-7b': { 
+        name: 'DeepSeek R1 7B (Groq)', 
+        provider: 'Groq', 
+        tokens: '8K', 
+        version: 'R1', 
+        category: 'API', 
+        compact: 'DS R1 7B API',
+        capabilities: ['Razonamiento API', 'Rápido', 'Sin GPU local'],
+        description: 'DeepSeek R1 7B vía Groq API. Razonamiento rápido y eficiente.'
+    },
+    'deepseek-r1-distill-llama-8b': { 
+        name: 'DeepSeek R1 8B (Groq)', 
+        provider: 'Groq', 
+        tokens: '8K', 
+        version: 'R1', 
+        category: 'API', 
+        compact: 'DS R1 8B API',
+        capabilities: ['Razonamiento API', 'Balanceado', 'Sin GPU local'],
+        description: 'DeepSeek R1 8B vía Groq API. Razonamiento balanceado entre potencia y velocidad.'
     },
     
     // Auto
@@ -131,15 +196,20 @@ const MODELS = {
 
 // Mapeo de modelos a APIs reales
 const MODEL_API_MAP = {
-    // Ollama (locales)
+    // Ollama (locales) - Solo 2 modelos ligeros
     'qwen2.5:7b-instruct': { provider: 'ollama', apiModel: 'qwen2.5:7b-instruct' },
-    'qwen2.5vl:3b': { provider: 'ollama', apiModel: 'qwen2.5vl:3b' },
-    'deepseek-r1:7b': { provider: 'ollama', apiModel: 'deepseek-r1:7b' },
     'deepseek-coder:6.7b': { provider: 'ollama', apiModel: 'deepseek-coder:6.7b' },
     
-    // Groq API
+    // Groq API - Qwen (4 modelos)
     'qwen-2.5-72b-instruct': { provider: 'groq', apiModel: 'qwen2.5-72b-instruct' },
-    'deepseek-r1-distill-llama-70b': { provider: 'groq', apiModel: 'deepseek-r1-distill-llama-70b' }
+    'qwen-2.5-32b-instruct': { provider: 'groq', apiModel: 'qwen2.5-32b-instruct' },
+    'qwen-2.5-14b-instruct': { provider: 'groq', apiModel: 'qwen2.5-14b-instruct' },
+    'qwen-2.5-7b-instruct': { provider: 'groq', apiModel: 'qwen2.5-7b-instruct' },
+    
+    // Groq API - DeepSeek (3 modelos)
+    'deepseek-r1-distill-llama-70b': { provider: 'groq', apiModel: 'deepseek-r1-distill-llama-70b' },
+    'deepseek-r1-distill-qwen-7b': { provider: 'groq', apiModel: 'deepseek-r1-distill-qwen-7b' },
+    'deepseek-r1-distill-llama-8b': { provider: 'groq', apiModel: 'deepseek-r1-distill-llama-8b' }
 };
 
 // Timeouts optimizados por proveedor
@@ -392,10 +462,12 @@ function toggleMaxMode(enabled) {
 }
 
 function getMaxModel() {
-    // Prioridad: DeepSeek R1 70B (Groq) > Qwen 72B (Groq) > DeepSeek R1 7B > Qwen 7B
+    // Prioridad: Modelos API más potentes > Modelos locales
     if (MODELS['deepseek-r1-distill-llama-70b']) return 'deepseek-r1-distill-llama-70b';
     if (MODELS['qwen-2.5-72b-instruct']) return 'qwen-2.5-72b-instruct';
-    if (MODELS['deepseek-r1:7b']) return 'deepseek-r1:7b';
+    if (MODELS['qwen-2.5-32b-instruct']) return 'qwen-2.5-32b-instruct';
+    // Fallback a modelos locales
+    if (MODELS['deepseek-coder:6.7b']) return 'deepseek-coder:6.7b';
     return 'qwen2.5:7b-instruct';
 }
 
@@ -636,8 +708,9 @@ function selectModel(modelId) {
     }
     
     if (state.attachedImage && modelId === 'auto') {
-        state.model = 'qwen2.5vl:3b';
-        updateModelButtonDisplay(MODELS['qwen2.5vl:3b']?.compact || 'Q2.5 VL');
+        // Usar Qwen estándar (local o API según useAPI) para imágenes
+        state.model = state.useAPI ? 'qwen-2.5-72b-instruct' : 'qwen2.5:7b-instruct';
+        updateModelButtonDisplay(MODELS[state.model]?.compact || 'Qwen');
     }
     
     document.getElementById('modelMenu').classList.remove('show');
@@ -651,24 +724,37 @@ function selectModel(modelId) {
 }
 
 function getAutoModel(message, hasImage = false) {
-    if (hasImage || state.attachedImage) {
-        return 'qwen2.5vl:3b';
-    }
-    
     const lower = message.toLowerCase();
+    
+    // Si hay imagen, usar Qwen (local o API según useAPI)
+    if (hasImage || state.attachedImage) {
+        return state.useAPI ? 'qwen-2.5-72b-instruct' : 'qwen2.5:7b-instruct';
+    }
     
     // Razonamiento complejo - DeepSeek R1
     if (lower.match(/piensa|analiza|razona|explica|por que|como funciona|deduce|inferencia/)) {
-        return state.useAPI ? 'deepseek-r1-distill-llama-70b' : 'deepseek-r1:7b';
+        if (state.useAPI) {
+            // Priorizar modelos API de DeepSeek R1 según disponibilidad
+            return 'deepseek-r1-distill-llama-70b'; // Más potente
+        } else {
+            // Local: usar DeepSeek Coder (más ligero que R1)
+            return 'deepseek-coder:6.7b';
+        }
     }
     
     // Código - DeepSeek Coder
     if (lower.match(/codigo|code|programa|script|funcion|python|javascript|html|css|typescript|java|c\+\+|rust|go/)) {
-        return 'deepseek-coder:6.7b';
+        // Usar DeepSeek Coder tanto en API como local (es el mismo modelo)
+        return state.useAPI ? 'deepseek-coder:6.7b' : 'deepseek-coder:6.7b';
     }
     
     // Conversación general - Qwen
-    return state.useAPI ? 'qwen-2.5-72b-instruct' : 'qwen2.5:7b-instruct';
+    // Priorizar modelos API más potentes cuando useAPI=true
+    if (state.useAPI) {
+        return 'qwen-2.5-72b-instruct'; // Modelo más potente por defecto
+    } else {
+        return 'qwen2.5:7b-instruct'; // Modelo local ligero
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -748,11 +834,11 @@ async function sendMessage() {
     updateSendButton(true);
     
     const hasImage = !!state.attachedImage;
-    if (hasImage && state.model !== 'auto' && !state.model.includes('vl') && !state.model.includes('vision')) {
-        const previousModel = state.model;
-        state.model = 'qwen2.5vl:3b';
-        updateModelButtonDisplay(MODELS['qwen2.5vl:3b']?.compact || 'Q2.5 VL');
-        console.log(`🖼️ Imagen detectada: Cambiando de ${previousModel} a modelo visual`);
+    // Nota: qwen2.5vl:3b fue eliminado, usar Qwen estándar para imágenes
+    if (hasImage && state.model !== 'auto' && !state.model.includes('qwen')) {
+        // Si hay imagen y no es Qwen, sugerir usar Qwen (local o API según useAPI)
+        const suggestedModel = state.useAPI ? 'qwen-2.5-72b-instruct' : 'qwen2.5:7b-instruct';
+        console.log(`🖼️ Imagen detectada: Usando modelo Qwen para procesamiento de imágenes`);
     }
     
     let modelsToUse = [];
@@ -769,6 +855,16 @@ async function sendMessage() {
         modelsToUse = [autoModel];
     } else {
         modelsToUse = [state.model];
+    }
+    
+    // Verificar memoria antes de usar modelos locales
+    const hasLocalModels = modelsToUse.some(modelId => modelId && modelId.includes(':'));
+    if (hasLocalModels && !state.useAPI) {
+        if (!hasEnoughMemoryForLocalModels()) {
+            const memory = checkMemoryAvailable();
+            const memoryGB = memory ? (memory.available / 1024).toFixed(1) : 'desconocida';
+            showToast(`⚠️ Memoria RAM baja (${memoryGB}GB disponible). Los modelos locales requieren al menos 4GB. Considera usar modelos API.`, 'warning');
+        }
     }
     
     addMessage('user', message, state.attachedImage);
@@ -1230,8 +1326,9 @@ function captureImageForIA() {
     showAttachment(dataUrl);
     
     if (state.model === 'auto' || !state.model.includes('vl')) {
-        state.model = 'qwen2.5vl:3b';
-        updateModelButtonDisplay(MODELS['qwen2.5vl:3b']?.compact || 'Q2.5 VL');
+        // Usar Qwen estándar (local o API según useAPI) para imágenes
+        state.model = state.useAPI ? 'qwen-2.5-72b-instruct' : 'qwen2.5:7b-instruct';
+        updateModelButtonDisplay(MODELS[state.model]?.compact || 'Qwen');
     }
     
     closeCameraModal();

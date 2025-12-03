@@ -86,13 +86,17 @@ class ModelRouter {
       let parsedModel = null;
       
       if (modelToUse) {
-        // Verificar si el modelo es de Groq (tiene "groq" en el nombre o es un modelo API)
+        // Verificar si el modelo es de Groq (modelos API)
+        // Modelos API de Qwen: qwen-2.5-XXb-instruct (con guiones, sin :)
+        // Modelos API de DeepSeek: deepseek-r1-distill-* (con guiones, sin :)
         const isGroqModel = modelToUse.includes('groq') || 
                            modelToUse.includes('distill') || 
                            modelToUse.includes('llama-3') ||
                            modelToUse.includes('mixtral') ||
-                           modelToUse.includes('qwen-2.5-72b') ||
-                           modelToUse.includes('deepseek-r1-distill');
+                           modelToUse.includes('qwen-2.5') || // Todos los modelos Qwen API
+                           modelToUse.includes('deepseek-r1-distill') ||
+                           (modelToUse.startsWith('qwen') && modelToUse.includes('-') && !modelToUse.includes(':')) ||
+                           (modelToUse.startsWith('deepseek') && modelToUse.includes('-') && !modelToUse.includes(':'));
         
         // Verificar si el modelo es de Ollama (tiene ":" y no es Groq)
         const isOllamaModel = modelToUse.includes(':') && !isGroqModel;

@@ -58,18 +58,24 @@ class GroqAPIServer {
     this.currentRequests = 0;
     
     // Modelos disponibles en Groq (actualizados 2025)
+    // Prioridad: Qwen y DeepSeek (modelos principales de la app)
     this.availableModels = [
+      // Qwen (prioridad)
+      'qwen2.5-72b-instruct',
+      'qwen2.5-32b-instruct',
+      'qwen2.5-14b-instruct',
+      'qwen2.5-7b-instruct',
+      // DeepSeek (prioridad)
+      'deepseek-r1-distill-llama-70b',
+      'deepseek-r1-distill-qwen-7b',
+      'deepseek-r1-distill-llama-8b',
+      // Modelos adicionales disponibles
       'llama-3.3-70b-versatile',
       'llama-3.1-8b-instant',
       'llama-3.1-70b-versatile',
       'mixtral-8x7b-32768',
       'gemma2-9b-it',
-      'gemma-7b-it',
-      'deepseek-r1-distill-llama-8b',
-      'deepseek-r1-distill-qwen-7b',
-      'qwen2.5-32b-instruct',
-      'qwen2.5-14b-instruct',
-      'qwen2.5-7b-instruct'
+      'gemma-7b-it'
     ];
     
     // Estadísticas

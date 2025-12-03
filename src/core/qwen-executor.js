@@ -160,9 +160,11 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
           throw new Error(response.data.error || 'Error desconocido');
         }
       } catch (serverError) {
-        // Si el servidor no está disponible, intentar llamada directa
-        if (serverError.code === 'ECONNREFUSED' || serverError.response?.status >= 500) {
-          console.warn('⚠️ Servidor Groq no disponible, intentando llamada directa...');
+        // Si el servidor no está disponible o devuelve error 401, intentar llamada directa
+        if (serverError.code === 'ECONNREFUSED' || 
+            serverError.response?.status >= 500 || 
+            serverError.response?.status === 401) {
+          console.warn('⚠️ Servidor Groq no disponible o error 401, intentando llamada directa...');
           
           if (!this.config.groqApiKey) {
             throw new Error('GROQ_API_KEY no configurada. Configúrala en qwen-valencia.env');

@@ -1,7 +1,7 @@
 {
   "name": "qwen-valencia",
   "version": "1.0.0",
-  "description": "Qwen + DeepSeek Ejecutor Puro - Sin Bloqueos Descriptivos",
+  "description": "Qwen + DeepSeek Ejecutor Puro - 7 modelos API + 2 locales ligeros - Optimizado para memoria RAM",
   "main": "src/app/main.js",
   "scripts": {
     "start": "electron .",
