@@ -561,6 +561,72 @@ class MCPUniversal {
   }
 
   /**
+   * Intenta matar proceso en un puerto específico
+   */
+  async killProcessOnPort(port) {
+    try {
+      const { exec } = require('child_process');
+      const { promisify } = require('util');
+      const execAsync = promisify(exec);
+      
+      // Windows: encontrar PID en puerto
+      if (process.platform === 'win32') {
+        try {
+          const { stdout } = await execAsync(`netstat -ano | findstr :${port} | findstr LISTENING`);
+          const lines = stdout.trim().split('\n');
+          for (const line of lines) {
+            const parts = line.trim().split(/\s+/);
+            const pid = parts[parts.length - 1];
+            if (pid && !isNaN(pid)) {
+              // No matar nuestro propio proceso
+              if (parseInt(pid) === process.pid) {
+                continue;
+              }
+              this.logger.warn(`Detectado proceso en puerto ${port}, intentando detener`, { pid, port });
+              try {
+                await execAsync(`taskkill /PID ${pid} /F`);
+                this.logger.info('Proceso detenido', { pid, port });
+                return true;
+              } catch (e) {
+                this.logger.warn('No se pudo detener proceso', { pid, port, error: e.message });
+              }
+            }
+          }
+        } catch (e) {
+          // No hay proceso en el puerto, está bien
+          return false;
+        }
+      } else {
+        // Linux/Mac: usar lsof
+        try {
+          const { stdout } = await execAsync(`lsof -ti:${port}`);
+          const pids = stdout.trim().split('\n').filter(pid => pid && !isNaN(pid));
+          for (const pid of pids) {
+            if (parseInt(pid) === process.pid) {
+              continue;
+            }
+            this.logger.warn(`Detectado proceso en puerto ${port}, intentando detener`, { pid, port });
+            try {
+              await execAsync(`kill -9 ${pid}`);
+              this.logger.info('Proceso detenido', { pid, port });
+              return true;
+            } catch (e) {
+              this.logger.warn('No se pudo detener proceso', { pid, port, error: e.message });
+            }
+          }
+        } catch (e) {
+          // No hay proceso en el puerto, está bien
+          return false;
+        }
+      }
+      return false;
+    } catch (error) {
+      this.logger.warn('Error al intentar matar proceso en puerto', { port, error: error.message });
+      return false;
+    }
+  }
+
+  /**
    * Inicia el servidor
    */
   async start() {
@@ -571,9 +637,25 @@ class MCPUniversal {
     const available = await this.isPortAvailable(this.port);
     
     if (!available) {
-      this.logger.error('Puerto ya está en uso', { port: this.port });
-      this.logger.info('Intenta detener el proceso que usa el puerto o ejecuta DETENER_TODO.bat', { port: this.port });
-      return false;
+      // Intentar matar proceso en el puerto antes de fallar
+      this.logger.warn(`Puerto ${this.port} ocupado, intentando liberar...`);
+      const killed = await this.killProcessOnPort(this.port);
+      
+      if (killed) {
+        // Esperar un momento para que el puerto se libere
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Verificar nuevamente
+        const availableAfterKill = await this.isPortAvailable(this.port);
+        if (!availableAfterKill) {
+          this.logger.error('Puerto aún está en uso después de intentar liberarlo', { port: this.port });
+          this.logger.info('Intenta detener el proceso que usa el puerto o ejecuta DETENER_TODO.bat', { port: this.port });
+          return false;
+        }
+      } else {
+        this.logger.error('Puerto ya está en uso y no se pudo liberar', { port: this.port });
+        this.logger.info('Intenta detener el proceso que usa el puerto o ejecuta DETENER_TODO.bat', { port: this.port });
+        return false;
+      }
     }
     
     this.server.listen(this.port, () => {
