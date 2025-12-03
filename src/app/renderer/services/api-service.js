@@ -320,16 +320,19 @@ function getAPIService() {
   return globalAPIService;
 }
 
-// Exportar para uso global
+// Exportar para uso global en el navegador
 if (typeof window !== 'undefined') {
   window.APIService = APIService;
   window.createAPIService = createAPIService;
   window.getAPIService = getAPIService;
 }
 
-module.exports = {
-  APIService,
-  createAPIService,
-  getAPIService
-};
+// Solo exportar si estamos en Node.js (no en navegador)
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    APIService,
+    createAPIService,
+    getAPIService
+  };
+}
 
