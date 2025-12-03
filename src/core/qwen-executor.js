@@ -19,13 +19,18 @@ class QwenExecutor {
     // Limpiar y validar API key de Groq si existe
     let groqApiKey = config.groqApiKey || process.env.GROQ_API_KEY;
     if (groqApiKey) {
+      // Limpiar primero manualmente para asegurar que no hay caracteres ocultos
+      groqApiKey = groqApiKey.trim().replace(/['"]/g, '').replace(/\s+/g, '').replace(/[\x00-\x1F\x7F-\x9F]/g, '');
+      
       const cleaned = APIKeyCleaner.cleanAndValidateGroq(groqApiKey);
       if (cleaned.valid) {
         groqApiKey = cleaned.cleaned;
         console.log(`✅ API Key de Groq validada (longitud: ${groqApiKey.length})`);
       } else {
-        console.warn(`⚠️ API Key de Groq inválida: ${cleaned.error}`);
-        groqApiKey = cleaned.cleaned; // Usar la versión limpia aunque no sea válida
+        console.error(`❌ API Key de Groq inválida: ${cleaned.error}`);
+        console.error(`   Longitud actual: ${cleaned.cleaned.length}`);
+        console.error(`   Primeros 20 caracteres: ${cleaned.cleaned.substring(0, 20)}...`);
+        throw new Error(`GROQ_API_KEY inválida: ${cleaned.error}. Verifica tu GROQ_API_KEY en qwen-valencia.env`);
       }
     }
     

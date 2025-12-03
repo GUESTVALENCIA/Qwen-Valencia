@@ -140,9 +140,19 @@ function initializeModelRouter() {
   // Obtener y limpiar API key de Groq
   let groqApiKey = variablesLoader.get('GROQ_API_KEY') || process.env.GROQ_API_KEY;
   if (groqApiKey) {
-    // Limpiar API key: eliminar espacios, comillas, saltos de línea
-    groqApiKey = groqApiKey.trim().replace(/['"]/g, '').replace(/\s+/g, '');
-    console.log(`✅ API Key de Groq cargada y limpiada (longitud: ${groqApiKey.length})`);
+    // Limpiar API key: eliminar espacios, comillas, saltos de línea, caracteres de control
+    groqApiKey = groqApiKey.trim().replace(/['"]/g, '').replace(/\s+/g, '').replace(/[\x00-\x1F\x7F-\x9F]/g, '');
+    
+    // Validar formato básico
+    if (groqApiKey.length < 20) {
+      console.error(`❌ GROQ_API_KEY demasiado corta (${groqApiKey.length} caracteres). Debe tener al menos 20 caracteres.`);
+      console.error(`   Primeros caracteres: ${groqApiKey.substring(0, 20)}...`);
+    } else if (!groqApiKey.startsWith('gsk_')) {
+      console.error(`❌ GROQ_API_KEY no tiene el formato correcto. Debe empezar con 'gsk_'.`);
+      console.error(`   Primeros caracteres: ${groqApiKey.substring(0, 10)}...`);
+    } else {
+      console.log(`✅ API Key de Groq cargada y limpiada (longitud: ${groqApiKey.length})`);
+    }
   } else {
     console.warn('⚠️ GROQ_API_KEY no encontrada');
   }

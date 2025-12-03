@@ -87,9 +87,12 @@ class VariablesLoader {
    * @param {string} content - Contenido del archivo
    */
   parseEnvFile(content) {
-    const lines = content.split('\n');
+    // Dividir por líneas pero preservar valores que puedan tener saltos de línea
+    const lines = content.split(/\r?\n/);
     
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      let line = lines[i];
+      
       // Ignorar comentarios y líneas vacías
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) continue;
@@ -100,13 +103,20 @@ class VariablesLoader {
         const key = match[1].trim();
         let value = match[2].trim();
         
+        // Si el valor está entre comillas, puede extenderse a múltiples líneas
+        // Por ahora, solo procesamos valores en una línea
         // Eliminar comillas si existen
         if ((value.startsWith('"') && value.endsWith('"')) || 
             (value.startsWith("'") && value.endsWith("'"))) {
           value = value.slice(1, -1);
         }
         
+        // Asegurar que no hay caracteres de control al inicio/final
+        value = value.replace(/^[\x00-\x1F\x7F-\x9F]+|[\x00-\x1F\x7F-\x9F]+$/g, '');
+        
+        // Guardar el valor completo sin truncar
         this.variables[key] = value;
+        console.log(`📝 Variable ${key} cargada (longitud: ${value.length})`);
       }
     }
   }
@@ -153,18 +163,37 @@ MODE=auto
    * @returns {string|null} - Valor decodificado o null
    */
   get(key) {
-    const value = this.variables[key] || process.env[key];
+    let value = this.variables[key] || process.env[key];
     if (!value) return null;
 
-    // Si es una API key, intentar decodificar
+    // Limpiar primero: eliminar espacios, comillas, saltos de línea
+    value = value.trim().replace(/['"]/g, '').replace(/\s+/g, '').replace(/[\x00-\x1F\x7F-\x9F]/g, '');
+
+    // Si es una API key, intentar decodificar SOLO si parece estar codificada
     if (key.includes('API_KEY') || key.includes('APIKEY') || key.includes('TOKEN') || key.includes('SECRET')) {
-      try {
-        const decoded = VariablesEncoder.decode(value);
-        if (decoded && decoded.length > 0) {
-          return decoded;
+      // Detectar si está codificada: las keys codificadas suelen ser más largas y no empiezan con el prefijo esperado
+      const isLikelyEncoded = value.length > 60 && !value.startsWith('gsk_') && !value.startsWith('sk-');
+      
+      if (isLikelyEncoded) {
+        try {
+          const decoded = VariablesEncoder.decode(value);
+          // Validar que la decodificación tenga sentido
+          if (decoded && decoded.length >= 20 && (decoded.startsWith('gsk_') || decoded.startsWith('sk-'))) {
+            console.log(`✅ Variable ${key} decodificada (longitud: ${decoded.length})`);
+            return decoded;
+          } else {
+            // Decodificación no válida, usar valor directo
+            console.log(`ℹ️ Variable ${key} no codificada o decodificación inválida, usando valor directo (longitud: ${value.length})`);
+            return value;
+          }
+        } catch (e) {
+          // No está codificado o error al decodificar, usar valor directo
+          console.log(`ℹ️ Variable ${key} no codificada, usando valor directo (longitud: ${value.length})`);
+          return value;
         }
-      } catch (e) {
-        // No está codificado, usar valor directo
+      } else {
+        // No parece codificado, usar valor directo
+        return value;
       }
     }
 
