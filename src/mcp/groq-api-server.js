@@ -125,65 +125,6 @@ class GroqAPIServer {
     });
   }
   
-  setupRoutes() {
-    // Health check
-    this.app.get('/groq/health', (req, res) => {
-      res.json({
-        status: 'healthy',
-        service: 'groq-api',
-        apiKeysCount: this.apiKeys.length,
-        currentKeyIndex: this.currentKeyIndex,
-        cacheSize: this.cache.size,
-        stats: this.stats
-      });
-    });
-    
-    // Listar modelos disponibles
-    this.app.get('/groq/models', (req, res) => {
-      res.json({
-        success: true,
-        models: this.availableModels,
-        defaultModel: 'llama-3.3-70b-versatile'
-      });
-    });
-    
-    // Chat con Groq API (legacy - deprecated)
-    this.app.post('/groq/chat', async (req, res) => {
-      res.setHeader('X-API-Deprecated', 'true');
-      res.setHeader('X-API-Version', 'v1');
-      res.setHeader('X-API-Migration', '/api/v1/groq/chat');
-      await this.handleChatRequest(req, res);
-    });
-    
-    // Listar modelos disponibles (legacy - deprecated)
-    this.app.get('/groq/models', (req, res) => {
-      res.setHeader('X-API-Deprecated', 'true');
-      res.setHeader('X-API-Version', 'v1');
-      res.setHeader('X-API-Migration', '/api/v1/groq/models');
-      res.json({
-        success: true,
-        models: this.availableModels,
-        defaultModel: 'llama-3.3-70b-versatile'
-      });
-    });
-    
-    // Estadísticas (legacy - deprecated)
-    this.app.get('/groq/stats', (req, res) => {
-      res.setHeader('X-API-Deprecated', 'true');
-      res.setHeader('X-API-Version', 'v1');
-      res.setHeader('X-API-Migration', '/api/v1/groq/stats');
-      res.json(this.stats);
-    });
-    
-    // Limpiar cache (legacy - deprecated)
-    this.app.post('/groq/cache/clear', (req, res) => {
-      res.setHeader('X-API-Deprecated', 'true');
-      res.setHeader('X-API-Version', 'v1');
-      res.setHeader('X-API-Migration', '/api/v1/groq/cache/clear');
-      this.cache.clear();
-      res.json({ success: true, message: 'Cache limpiado' });
-    });
-  }
   
   /**
    * Maneja request de chat (extraído para reutilizar en v1 y legacy)
@@ -396,7 +337,7 @@ class GroqAPIServer {
     this.app.use('/api/v1/groq', v1Router);
     
     // ==================== LEGACY ENDPOINTS (Deprecated) ====================
-    // Health check
+    // Health check (legacy - deprecated)
     this.app.get('/groq/health', (req, res) => {
       res.setHeader('X-API-Deprecated', 'true');
       res.setHeader('X-API-Version', 'v1');
@@ -411,14 +352,47 @@ class GroqAPIServer {
       });
     });
     
-    // Limpiar cache
+    // Listar modelos disponibles (legacy - deprecated)
+    this.app.get('/groq/models', (req, res) => {
+      res.setHeader('X-API-Deprecated', 'true');
+      res.setHeader('X-API-Version', 'v1');
+      res.setHeader('X-API-Migration', '/api/v1/groq/models');
+      res.json({
+        success: true,
+        models: this.availableModels,
+        defaultModel: 'llama-3.3-70b-versatile'
+      });
+    });
+    
+    // Chat con Groq API (legacy - deprecated)
+    this.app.post('/groq/chat', async (req, res) => {
+      res.setHeader('X-API-Deprecated', 'true');
+      res.setHeader('X-API-Version', 'v1');
+      res.setHeader('X-API-Migration', '/api/v1/groq/chat');
+      await this.handleChatRequest(req, res);
+    });
+    
+    // Estadísticas (legacy - deprecated)
+    this.app.get('/groq/stats', (req, res) => {
+      res.setHeader('X-API-Deprecated', 'true');
+      res.setHeader('X-API-Version', 'v1');
+      res.setHeader('X-API-Migration', '/api/v1/groq/stats');
+      res.json(this.stats);
+    });
+    
+    // Limpiar cache (legacy - deprecated)
     this.app.post('/groq/cache/clear', (req, res) => {
+      res.setHeader('X-API-Deprecated', 'true');
+      res.setHeader('X-API-Version', 'v1');
+      res.setHeader('X-API-Migration', '/api/v1/groq/cache/clear');
       this.cache.clear();
       res.json({ success: true, message: 'Cache limpiado' });
     });
     
-    // Resetear rotación de keys
+    // Resetear rotación de keys (legacy - deprecated)
     this.app.post('/groq/keys/reset', (req, res) => {
+      res.setHeader('X-API-Deprecated', 'true');
+      res.setHeader('X-API-Version', 'v1');
       this.currentKeyIndex = 0;
       this.keyUsageCount.clear();
       this.keyBlockedUntil.clear();
