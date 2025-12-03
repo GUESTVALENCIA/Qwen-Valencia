@@ -44,7 +44,7 @@ class GroqAPIServer {
     if (this.apiKeys.length === 0) {
       console.warn('⚠️ No se encontraron GROQ_API_KEY en .env.pro');
     } else {
-      console.log(`✅ ${this.apiKeys.length} API Key(s) de Groq cargada(s) y limpiada(s)`);
+      this.logger.info(`${this.apiKeys.length} API Key(s) de Groq cargada(s) y limpiada(s)`);
     }
     
     // Rotación de keys
@@ -473,8 +473,9 @@ class GroqAPIServer {
         
         this.server.on('error', (error) => {
           if (error.code === 'EADDRINUSE') {
-            console.error(`❌ Puerto ${this.port} ya está en uso`);
-            console.error(`💡 Intenta detener el proceso que usa el puerto ${this.port}`);
+            this.logger.error(`Puerto ${this.port} ya está en uso`, null, {
+              suggestion: 'Intenta detener el proceso que usa el puerto'
+            });
             reject(false);
           } else {
             reject(error);
