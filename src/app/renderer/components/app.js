@@ -835,15 +835,8 @@ function isQwenModel(modelId) {
         return model.name.includes('Qwen') && !model.name.includes('DeepSeek');
     }
     
-    // Fallback adicional: verificar patrón solo si no hay riesgo de falsos positivos
-    // Solo modelos que empiezan con 'qwen' Y no contienen 'deepseek' ni 'distill'
-    const lowerModelId = modelId.toLowerCase();
-    if (lowerModelId.startsWith('qwen') && 
-        !lowerModelId.includes('deepseek') && 
-        !lowerModelId.includes('distill')) {
-        return true;
-    }
-    
+    // No usar fallback con startsWith('qwen') para evitar falsos positivos
+    // Si el modelo no está en MODELS ni en QWEN_MODEL_IDS, no es Qwen
     return false;
 }
 
