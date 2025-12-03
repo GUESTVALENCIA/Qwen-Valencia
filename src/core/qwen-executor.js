@@ -279,7 +279,7 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
     if (!isAvailable) {
       throw APIError.modelNotFound(modelToUse, {
         suggestion: `Ejecuta: ollama pull ${modelToUse}`,
-        ollamaUrl: this.config.ollamaBaseUrl
+        ollamaUrl: this.config.ollamaUrl
       });
     }
     
@@ -486,7 +486,7 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
             const errorInfo = extractErrorInfo(error);
             
             // Si es error 401/429, intentar fallback a Ollama
-            if (this.shouldFallbackToOllama(error) && this.config.ollamaBaseUrl) {
+            if (this.shouldFallbackToOllama(error) && this.config.ollamaUrl) {
               this.logger.warn('Error con Groq, intentando fallback a Ollama', { statusCode: errorInfo.statusCode });
             } else {
               // Si no es retryable o no hay Ollama, lanzar error
@@ -503,7 +503,7 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
       }
 
       // Fallback a Ollama si Groq falló o no está disponible
-      if (this.config.ollamaBaseUrl) {
+      if (this.config.ollamaUrl) {
         if (!ollamaBreaker.isAvailable()) {
           this.logger.warn('Circuit breaker Ollama está OPEN');
           throw APIError.ollamaNotAvailable({ circuitBreakerOpen: true });
