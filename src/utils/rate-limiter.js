@@ -274,4 +274,3 @@ module.exports = {
   RateLimiterFactory,
   DEFAULT_OPTIONS
 };
-
