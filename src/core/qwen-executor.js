@@ -42,7 +42,10 @@ class QwenExecutor {
           length: cleaned.cleaned.length,
           preview: cleaned.cleaned.substring(0, 20)
         });
-        throw new Error(`GROQ_API_KEY inválida: ${cleaned.error}. Verifica tu GROQ_API_KEY en qwen-valencia.env`);
+        throw APIError.invalidAPIKey({ 
+          reason: cleaned.error,
+          source: 'qwen-executor'
+        });
       }
     }
     
@@ -179,21 +182,30 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
           this.logger.warn('Servidor Groq no disponible o error 401, intentando llamada directa');
           
           if (!this.config.groqApiKey) {
-            throw new Error('GROQ_API_KEY no configurada. Configúrala en qwen-valencia.env');
+            throw APIError.invalidAPIKey({ 
+              reason: 'API key no configurada',
+              source: 'qwen-executor-direct'
+            });
           }
           
           // Limpiar y validar API key usando APIKeyCleaner
           const cleaned = APIKeyCleaner.cleanAndValidateGroq(this.config.groqApiKey || '');
           
           if (!cleaned.valid || !cleaned.cleaned) {
-            throw new Error(`GROQ_API_KEY inválida: ${cleaned.error || 'API key vacía o mal formateada'}`);
+            throw APIError.invalidAPIKey({ 
+              reason: cleaned.error || 'API key vacía o mal formateada',
+              source: 'qwen-executor-direct'
+            });
           }
           
           const cleanApiKey = cleaned.cleaned;
           
           // Validar que no tenga caracteres inválidos para headers
           if (/[\r\n\t\x00-\x1F\x7F-\x9F]/.test(cleanApiKey)) {
-            throw new Error('GROQ_API_KEY contiene caracteres inválidos para headers HTTP');
+            throw APIError.invalidAPIKey({ 
+              reason: 'Caracteres inválidos en API key',
+              source: 'qwen-executor-direct'
+            });
           }
           
           const directResponse = await axios.post(
@@ -219,7 +231,12 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
         throw serverError;
       }
     } catch (error) {
-      throw new Error(`Error con Groq API: ${error.message}`);
+      const errorInfo = extractErrorInfo(error);
+      throw APIError.fromHTTPStatus(
+        errorInfo.statusCode,
+        errorInfo.message,
+        { ...errorInfo.details, source: 'qwen-executor', originalError: error.message }
+      );
     }
   }
 
@@ -597,7 +614,11 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
 
       return response.data;
     } catch (error) {
-      throw new Error(`Error leyendo archivo: ${error.message}`);
+      throw APIError.fromHTTPStatus(
+        500,
+        `Error leyendo archivo: ${error.message}`,
+        { source: 'mcp-read-file', originalError: error.message }
+      );
     }
   }
 
@@ -619,7 +640,11 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
 
       return response.data;
     } catch (error) {
-      throw new Error(`Error listando archivos: ${error.message}`);
+      throw APIError.fromHTTPStatus(
+        500,
+        `Error listando archivos: ${error.message}`,
+        { source: 'mcp-list-files', originalError: error.message }
+      );
     }
   }
 }

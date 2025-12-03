@@ -313,7 +313,11 @@ class OllamaMCPServer extends EventEmitter {
       
       if (!model || !messages) {
         this.currentRequests--;
-        return res.status(400).json({ error: 'model y messages son requeridos' });
+        const { APIError } = require('../utils/api-error');
+        const error = APIError.invalidRequest('model y messages son requeridos', {
+          missing: !model ? ['model'] : ['messages']
+        });
+        return res.status(error.statusCode).json(error.toJSON());
       }
       
       this.stats.totalRequests++;
@@ -405,7 +409,11 @@ class OllamaMCPServer extends EventEmitter {
       
       if (!model || !messages) {
         this.currentRequests--;
-        return res.status(400).json({ error: 'model y messages son requeridos' });
+        const { APIError } = require('../utils/api-error');
+        const error = APIError.invalidRequest('model y messages son requeridos', {
+          missing: !model ? ['model'] : ['messages']
+        });
+        return res.status(error.statusCode).json(error.toJSON());
       }
       
       this.stats.totalRequests++;
@@ -480,7 +488,9 @@ class OllamaMCPServer extends EventEmitter {
         this.currentRequests--;
         res.json({ success: true, message: 'Stream cancelado' });
       } else {
-        res.status(404).json({ error: 'Stream no encontrado' });
+        const { APIError } = require('../utils/api-error');
+        const error = APIError.modelNotFound('stream', { streamId: requestId });
+        res.status(error.statusCode).json(error.toJSON());
       }
     });
   }

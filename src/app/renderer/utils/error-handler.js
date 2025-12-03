@@ -118,6 +118,22 @@ class ErrorHandler {
      * @returns {Object} - Error normalizado
      */
     normalizeError(error) {
+        // Si es un objeto APIError (del backend o parseado)
+        if (error && typeof error === 'object' && error.code && error.statusCode) {
+            return {
+                message: error.message || 'Error de API',
+                name: 'APIError',
+                code: error.code,
+                statusCode: error.statusCode,
+                details: error.details || {},
+                retryable: error.retryable || false,
+                timestamp: error.timestamp,
+                stack: error.stack || null,
+                original: error
+            };
+        }
+        
+        // Si es un Error estándar
         if (error instanceof Error) {
             return {
                 message: error.message,
@@ -136,6 +152,9 @@ class ErrorHandler {
             return {
                 message: error.message || 'Error desconocido',
                 name: error.name || 'Error',
+                code: error.code || null,
+                statusCode: error.status || error.statusCode || null,
+                details: error.details || {},
                 stack: error.stack || null,
                 original: error
             };
@@ -318,14 +337,46 @@ function handleAPIError(error, source = 'api', metadata = {}) {
     let errorObj = error;
     let severity = ErrorSeverity.MEDIUM;
     
-    // Si es Response de fetch, extraer información
+    // Si es Response de fetch, extraer información y convertir a APIError
     if (error && typeof error.ok === 'boolean') {
         const status = error.status;
         severity = status >= 500 ? ErrorSeverity.HIGH : 
                    status >= 400 ? ErrorSeverity.MEDIUM : ErrorSeverity.LOW;
-        errorObj = new Error(`API Error: ${status} ${error.statusText || 'Unknown'}`);
+        
+        // Intentar parsear respuesta JSON para obtener APIError
+        error.json().then(data => {
+            if (data && data.error && data.error.code) {
+                // Es un APIError del backend
+                errorObj = {
+                    code: data.error.code,
+                    message: data.error.message,
+                    statusCode: data.error.statusCode || status,
+                    details: data.error.details || {},
+                    retryable: data.error.retryable || false,
+                    timestamp: data.error.timestamp
+                };
+            } else {
+                errorObj = new Error(data.error || data.message || `API Error: ${status} ${error.statusText || 'Unknown'}`);
+                errorObj.status = status;
+                errorObj.statusText = error.statusText;
+            }
+        }).catch(() => {
+            errorObj = new Error(`API Error: ${status} ${error.statusText || 'Unknown'}`);
+            errorObj.status = status;
+            errorObj.statusText = error.statusText;
+        });
+        
         metadata.status = status;
         metadata.statusText = error.statusText;
+    }
+    
+    // Si es un objeto con estructura de APIError (parseado del JSON)
+    if (error && typeof error === 'object' && error.code && error.statusCode) {
+        severity = error.statusCode >= 500 ? ErrorSeverity.HIGH : 
+                   error.statusCode >= 400 ? ErrorSeverity.MEDIUM : ErrorSeverity.LOW;
+        metadata.code = error.code;
+        metadata.details = error.details || {};
+        metadata.retryable = error.retryable || false;
     }
     
     return handler.handle(errorObj, {

@@ -260,7 +260,11 @@ class MCPUniversal {
         const { language, code, cwd } = req.body;
         
         if (!language || !code) {
-          return res.status(400).json({ error: 'language y code son requeridos' });
+          const { APIError } = require('../utils/api-error');
+          const error = APIError.invalidRequest('language y code son requeridos', {
+            missing: !language ? ['language'] : ['code']
+          });
+          return res.status(error.statusCode).json(error.toJSON());
         }
         
         let command;
@@ -288,7 +292,12 @@ class MCPUniversal {
             command = code;
             break;
           default:
-            return res.status(400).json({ error: `Lenguaje no soportado: ${language}` });
+            const { APIError } = require('../utils/api-error');
+            const error = APIError.invalidRequest(`Lenguaje no soportado: ${language}`, {
+              language,
+              supported: ['python', 'javascript', 'bash', 'powershell', 'cmd']
+            });
+            return res.status(error.statusCode).json(error.toJSON());
         }
         
         this.logger.debug('Ejecutando código', { language, codePreview: code.substring(0, 100) });
@@ -323,7 +332,9 @@ class MCPUniversal {
         const { filePath } = req.body;
         
         if (!filePath) {
-          return res.status(400).json({ error: 'filePath es requerido' });
+          const { APIError } = require('../utils/api-error');
+          const error = APIError.invalidRequest('filePath es requerido', { missing: ['filePath'] });
+          return res.status(error.statusCode).json(error.toJSON());
         }
         
         const resolvedPath = this.resolvePath(filePath);
@@ -363,7 +374,11 @@ class MCPUniversal {
         const { filePath, content } = req.body;
         
         if (!filePath || content === undefined) {
-          return res.status(400).json({ error: 'filePath y content son requeridos' });
+          const { APIError } = require('../utils/api-error');
+          const error = APIError.invalidRequest('filePath y content son requeridos', {
+            missing: !req.body.filePath ? ['filePath'] : ['content']
+          });
+          return res.status(error.statusCode).json(error.toJSON());
         }
         
         const resolvedPath = this.resolvePath(filePath);
@@ -418,7 +433,9 @@ class MCPUniversal {
         const { command, cwd } = req.body;
         
         if (!command) {
-          return res.status(400).json({ error: 'command es requerido' });
+          const { APIError } = require('../utils/api-error');
+          const error = APIError.invalidRequest('command es requerido', { missing: ['command'] });
+          return res.status(error.statusCode).json(error.toJSON());
         }
         
         const workDir = cwd || process.cwd();
