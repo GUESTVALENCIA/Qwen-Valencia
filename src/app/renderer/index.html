@@ -7,36 +7,40 @@
     <!-- Nota: Para producción, se debe generar nonce dinámicamente en main.js -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' http://localhost:6000 http://localhost:6002 http://localhost:6003 http://localhost:3000 https://api.groq.com https://api.deepseek.com https://*.openai.com; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;">
     <title>Qwen-Valencia</title>
+    <link rel="stylesheet" href="styles/design-tokens.css">
     <link rel="stylesheet" href="styles/main.css">
     <link rel="stylesheet" href="styles/liquid-glass.css">
     <link rel="stylesheet" href="styles/chat-input.css">
+    <link rel="stylesheet" href="styles/accessibility.css">
+    <link rel="stylesheet" href="styles/notifications.css">
+    <link rel="stylesheet" href="styles/loading-states.css">
 </head>
 <body>
     <!-- TITLEBAR -->
-    <div class="titlebar">
+    <div class="titlebar" role="banner">
         <div class="titlebar-drag">
-            <div class="titlebar-logo">Q</div>
+            <div class="titlebar-logo" aria-hidden="true">Q</div>
             <span class="titlebar-text">Qwen-Valencia</span>
         </div>
-        <div class="titlebar-controls">
-            <button class="titlebar-btn" id="themeToggle" onclick="toggleTheme()" title="Tema">&#9789;</button>
-            <button class="titlebar-btn" onclick="window.qwenValencia?.minimize()">&#8722;</button>
-            <button class="titlebar-btn" onclick="window.qwenValencia?.maximize()">&#9633;</button>
-            <button class="titlebar-btn close" onclick="window.qwenValencia?.close()">&#10005;</button>
+        <div class="titlebar-controls" role="toolbar" aria-label="Controles de ventana">
+            <button class="titlebar-btn" id="themeToggle" onclick="toggleTheme()" title="Alternar tema (Ctrl+Shift+T)" aria-label="Alternar tema">&#9789;</button>
+            <button class="titlebar-btn" onclick="window.qwenValencia?.minimize()" aria-label="Minimizar ventana">&#8722;</button>
+            <button class="titlebar-btn" onclick="window.qwenValencia?.maximize()" aria-label="Maximizar ventana">&#9633;</button>
+            <button class="titlebar-btn close" onclick="window.qwenValencia?.close()" aria-label="Cerrar ventana">&#10005;</button>
         </div>
     </div>
 
     <!-- MENU BAR - Estilo Cursor -->
-    <div class="menu-bar">
-        <div class="menu-item" data-menu="file">
+    <nav class="menu-bar" role="menubar" aria-label="Menú principal">
+        <div class="menu-item" data-menu="file" role="menuitem" aria-haspopup="true" aria-expanded="false">
             <span>Archivo</span>
-            <div class="menu-dropdown" id="menuFile">
-                <div class="menu-option" onclick="newChat()">Nuevo</div>
-                <div class="menu-option" onclick="openChat()">Abrir...</div>
-                <div class="menu-option" onclick="saveChat()">Guardar</div>
-                <div class="menu-option" onclick="saveChatAs()">Guardar como...</div>
-                <div class="menu-divider"></div>
-                <div class="menu-option" onclick="exportChat()">Exportar...</div>
+            <div class="menu-dropdown" id="menuFile" role="menu" aria-label="Menú Archivo">
+                <div class="menu-option" onclick="newChat()" role="menuitem" tabindex="0">Nuevo <span class="sr-only">(Ctrl+N)</span></div>
+                <div class="menu-option" onclick="openChat()" role="menuitem" tabindex="0">Abrir... <span class="sr-only">(Ctrl+O)</span></div>
+                <div class="menu-option" onclick="saveChat()" role="menuitem" tabindex="0">Guardar <span class="sr-only">(Ctrl+S)</span></div>
+                <div class="menu-option" onclick="saveChatAs()" role="menuitem" tabindex="0">Guardar como...</div>
+                <div class="menu-divider" role="separator"></div>
+                <div class="menu-option" onclick="exportChat()" role="menuitem" tabindex="0">Exportar...</div>
             </div>
         </div>
         <div class="menu-item" data-menu="edit">
@@ -81,19 +85,19 @@
     <!-- MAIN LAYOUT -->
     <div class="app-container" id="appContainer">
         <!-- SIDEBAR - Solo historial -->
-        <aside class="sidebar" id="sidebar">
+        <aside class="sidebar" id="sidebar" role="complementary" aria-label="Barra lateral">
             <div class="sidebar-header">
-                <button class="collapse-btn" onclick="toggleSidebar()" title="Colapsar sidebar">
-                    <span id="collapseIcon">&#8249;</span>
+                <button class="collapse-btn" onclick="toggleSidebar()" title="Colapsar sidebar (Ctrl+B)" aria-label="Colapsar sidebar" aria-expanded="true">
+                    <span id="collapseIcon" aria-hidden="true">&#8249;</span>
                 </button>
-                <button class="new-chat-btn" onclick="newChat()">+ Nuevo chat</button>
+                <button class="new-chat-btn" onclick="newChat()" aria-label="Nuevo chat">+ Nuevo chat</button>
             </div>
-            <div class="chat-history" id="chatHistory">
-                <div class="history-item active">
-                    <span class="history-icon">&#128172;</span>
+            <nav class="chat-history" id="chatHistory" role="navigation" aria-label="Historial de conversaciones">
+                <div class="history-item active" role="button" tabindex="0" aria-label="Nueva conversación" aria-current="true">
+                    <span class="history-icon" aria-hidden="true">&#128172;</span>
                     <span class="history-title">Nueva conversacion</span>
                 </div>
-            </div>
+            </nav>
             
             <!-- Avatar Section -->
             <div class="avatar-section" id="avatarSection">
@@ -126,16 +130,16 @@
             </div>
             
             <div class="sidebar-footer">
-                <button class="settings-btn" onclick="openSettings()" title="Configuracion">&#9881;</button>
+                <button class="settings-btn" onclick="openSettings()" title="Configuración (Ctrl+,)" aria-label="Abrir configuración">&#9881;</button>
             </div>
         </aside>
 
         <!-- MAIN CONTENT -->
-        <main class="main-content">
+        <main class="main-content" id="main-content" role="main">
             <!-- MESSAGES -->
-            <div class="chat-messages" id="chatMessages">
+            <div class="chat-messages" id="chatMessages" role="log" aria-live="polite" aria-label="Mensajes de conversación">
                 <div class="welcome-screen">
-                    <div class="welcome-logo">Q</div>
+                    <div class="welcome-logo" aria-hidden="true">Q</div>
                     <h1>Qwen-Valencia</h1>
                     <p>Asistente IA multimodal - Qwen & DeepSeek</p>
                 </div>
@@ -160,14 +164,14 @@
                 <div class="input-toolbar">
                     <!-- Model Selector -->
                     <div class="model-dropdown" id="modelDropdown">
-                        <button class="model-btn" onclick="toggleModelMenu()">
-                            <span class="model-icon" id="modelIcon">&#129302;</span>
+                        <button class="model-btn" onclick="toggleModelMenu()" aria-label="Seleccionar modelo" aria-haspopup="true" aria-expanded="false">
+                            <span class="model-icon" id="modelIcon" aria-hidden="true">&#129302;</span>
                             <span id="modelName">DeepSeek R1</span>
-                            <span class="dropdown-arrow">&#9662;</span>
+                            <span class="dropdown-arrow" aria-hidden="true">&#9662;</span>
                         </button>
-                        <div class="model-menu" id="modelMenu">
+                        <div class="model-menu" id="modelMenu" role="menu" aria-label="Menú de modelos">
                             <!-- Search Bar -->
-                            <input type="text" class="model-search" placeholder="Search models" id="modelSearch" oninput="filterModels(this.value)">
+                            <input type="text" class="model-search" placeholder="Search models" id="modelSearch" oninput="filterModels(this.value)" aria-label="Buscar modelos" role="searchbox">
                             
                             <!-- Toggles -->
                             <div class="model-toggles">
@@ -233,8 +237,8 @@
                     </div>
 
                     <!-- Tools -->
-                    <button class="tool-btn" id="cameraBtn" onclick="openCameraForIA()" title="Abrir cámara para IA">&#128247;</button>
-                    <button class="tool-btn" id="attachBtn" onclick="attachImage()" title="Adjuntar imagen">&#128206;</button>
+                    <button class="tool-btn" id="cameraBtn" onclick="openCameraForIA()" title="Abrir cámara para IA" aria-label="Abrir cámara para IA">&#128247;</button>
+                    <button class="tool-btn" id="attachBtn" onclick="attachImage()" title="Adjuntar imagen" aria-label="Adjuntar imagen">&#128206;</button>
                 </div>
 
                 <!-- INPUT - Estilo ChatGPT Profesional -->
@@ -323,21 +327,21 @@
                 <div class="settings-panels">
                     <div class="panel active" id="panel-general">
                         <div class="setting-group">
-                            <label>Temperatura</label>
+                            <label for="temperature">Temperatura</label>
                             <div class="range-group">
-                                <input type="range" id="temperature" min="0" max="2" step="0.1" value="0.7" oninput="updateTempValue(this)">
-                                <span id="tempValue">0.7</span>
+                                <input type="range" id="temperature" min="0" max="2" step="0.1" value="0.7" oninput="updateTempValue(this)" aria-label="Temperatura del modelo" aria-valuemin="0" aria-valuemax="2" aria-valuenow="0.7">
+                                <span id="tempValue" aria-live="polite">0.7</span>
                             </div>
                         </div>
                         <div class="setting-group">
-                            <label>Max Tokens</label>
-                            <input type="number" id="maxTokens" value="4096" min="256" max="32768">
+                            <label for="maxTokens">Max Tokens</label>
+                            <input type="number" id="maxTokens" value="4096" min="256" max="32768" aria-label="Máximo de tokens">
                         </div>
                     </div>
                     <div class="panel" id="panel-ollama">
                         <div class="setting-group">
-                            <label>URL Base</label>
-                            <input type="text" id="ollamaUrl" value="http://localhost:11434">
+                            <label for="ollamaUrl">URL Base</label>
+                            <input type="text" id="ollamaUrl" value="http://localhost:11434" aria-label="URL base de Ollama">
                         </div>
                     </div>
                     <div class="panel" id="panel-mcp">
@@ -391,10 +395,10 @@
                     </div>
                     <div class="panel" id="panel-servers">
                         <div class="setting-group">
-                            <label>Añadir Servidor MCP</label>
-                            <input type="text" id="newServerName" placeholder="Nombre del servidor">
-                            <input type="text" id="newServerCommand" placeholder="Comando (ej: node server.js)">
-                            <button class="btn-primary" onclick="addMCPServer()">Añadir Servidor</button>
+                            <label for="newServerName">Añadir Servidor MCP</label>
+                            <input type="text" id="newServerName" placeholder="Nombre del servidor" aria-label="Nombre del servidor MCP">
+                            <input type="text" id="newServerCommand" placeholder="Comando (ej: node server.js)" aria-label="Comando del servidor MCP">
+                            <button class="btn-primary" onclick="addMCPServer()" aria-label="Añadir servidor MCP">Añadir Servidor</button>
                         </div>
                         <div class="setting-group">
                             <label>Servidores MCP Configurados</label>
@@ -432,6 +436,10 @@
     <script src="utils/storage-helpers.js"></script>
     <script src="utils/error-handler.js"></script>
     <script src="utils/dom-helpers.js"></script>
+    <!-- Enterprise-Level UI Utilities -->
+    <script src="utils/notifications.js"></script>
+    <script src="utils/keyboard-shortcuts.js"></script>
+    <script src="utils/focus-manager.js"></script>
     <!-- Enterprise-Level Modules -->
     <script src="utils/logger.js"></script>
     <script src="core/state-manager.js"></script>
