@@ -22,18 +22,17 @@
   "author": "GUESTVALENCIA",
   "license": "MIT",
   "dependencies": {
-    "swagger-ui-express": "^5.0.0",
-    "yamljs": "^0.3.0",
     "@deepgram/sdk": "^3.5.0",
     "axios": "^1.6.0",
     "dotenv": "^16.3.1",
     "electron": "^28.0.0",
     "electron-store": "^8.1.0",
     "express": "^4.18.2",
-    "ws": "^8.14.2"
+    "swagger-ui-express": "^5.0.1",
+    "ws": "^8.14.2",
+    "yamljs": "^0.3.0"
   },
   "devDependencies": {
     "electron-builder": "^24.9.1"
   }
 }
-
