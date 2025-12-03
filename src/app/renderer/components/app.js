@@ -745,10 +745,16 @@ function getAutoModel(message, hasImage = false) {
         }
     }
     
-    // Código - DeepSeek Coder
+    // Código - DeepSeek
     if (lower.match(/codigo|code|programa|script|funcion|python|javascript|html|css|typescript|java|c\+\+|rust|go/)) {
-        // Usar DeepSeek Coder tanto en API como local (es el mismo modelo)
-        return state.useAPI ? 'deepseek-coder:6.7b' : 'deepseek-coder:6.7b';
+        if (state.useAPI) {
+            // API: usar DeepSeek R1 (no hay DeepSeek Coder API en Groq)
+            // Usar modelo más rápido para código: deepseek-r1-distill-qwen-7b
+            return 'deepseek-r1-distill-qwen-7b';
+        } else {
+            // Local: usar DeepSeek Coder (especializado en código)
+            return 'deepseek-coder:6.7b';
+        }
     }
     
     // Conversación general - Qwen
