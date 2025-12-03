@@ -19,6 +19,7 @@ const crypto = require('crypto');
 const EventEmitter = require('events');
 const path = require('path');
 const os = require('os');
+const { RateLimiterFactory } = require('../utils/rate-limiter');
 
 // Cargar desde qwen-valencia.env (archivo único para Qwen-Valencia)
 require('dotenv').config({ path: path.join(__dirname, '..', '..', 'qwen-valencia.env') });
@@ -31,6 +32,11 @@ class OllamaMCPServer extends EventEmitter {
     
     // Configuración de Ollama
     this.ollamaUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+    
+    // Cache de modelos disponibles
+    this.availableModels = [];
+    this.modelsCacheTime = 0;
+    this.modelsCacheTTL = 60000; // 1 minuto
     this.ollamaTimeout = 300000; // 5 minutos
     
     // Pool de conexiones HTTP persistentes
@@ -114,6 +120,16 @@ class OllamaMCPServer extends EventEmitter {
   setupMiddleware() {
     this.app.use(express.json({ limit: '50mb' }));
     this.app.use(express.text({ limit: '50mb' }));
+    
+    // Rate limiting avanzado (más permisivo para Ollama local)
+    this.rateLimiter = RateLimiterFactory.standard({
+      windowMs: 60000, // 1 minuto
+      maxRequests: 200, // 200 requests por minuto (más permisivo)
+      keyGenerator: (req) => {
+        return req.ip || 'unknown';
+      }
+    });
+    this.app.use(this.rateLimiter.middleware());
     
     // CORS completo
     this.app.use((req, res, next) => {
@@ -401,6 +417,15 @@ class OllamaMCPServer extends EventEmitter {
    * Chat optimizado (sin streaming)
    */
   async optimizedChat({ model, messages, images, options }) {
+    // Verificar que el modelo esté disponible antes de intentar usarlo
+    const isAvailable = await this.isModelAvailable(model);
+    if (!isAvailable) {
+      const { APIError } = require('../utils/api-error');
+      throw APIError.modelNotFound(model, {
+        suggestion: `Ejecuta: ollama pull ${model}`,
+        availableModels: this.availableModels.slice(0, 10) // Primeros 10 modelos disponibles
+      });
+    }
     try {
       const response = await axios.post(
         `${this.ollamaUrl}/api/chat`,

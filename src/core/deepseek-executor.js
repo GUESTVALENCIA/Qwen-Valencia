@@ -213,6 +213,22 @@ RECUERDA: ERES ESPECIALIZADO EN CÓDIGO. GENERAS Y EJECUTAS REALMENTE.`;
   }
 
   /**
+   * Verifica si un modelo está disponible en Ollama antes de usarlo
+   */
+  async verifyModelAvailable(modelName) {
+    try {
+      const response = await axios.get(
+        `${this.config.ollamaMcpUrl}/ollama/models/${encodeURIComponent(modelName)}`,
+        { timeout: 5000 }
+      );
+      return response.data?.available === true;
+    } catch (error) {
+      console.warn(`⚠️ No se pudo verificar disponibilidad del modelo ${modelName}:`, error.message);
+      return false;
+    }
+  }
+
+  /**
    * Llama a DeepSeek usando Ollama (local) vía servidor MCP dedicado
    */
   async callOllama(text, attachments = [], onChunk = null, model = null) {
@@ -222,6 +238,15 @@ RECUERDA: ERES ESPECIALIZADO EN CÓDIGO. GENERAS Y EJECUTAS REALMENTE.`;
     if (!modelToUse) {
       modelToUse = 'deepseek-coder:6.7b';
       console.warn('⚠️ No se especificó modelo Ollama, usando por defecto:', modelToUse);
+    }
+    
+    // Verificar que el modelo esté disponible antes de intentar usarlo
+    const isAvailable = await this.verifyModelAvailable(modelToUse);
+    if (!isAvailable) {
+      throw APIError.modelNotFound(modelToUse, {
+        suggestion: `Ejecuta: ollama pull ${modelToUse}`,
+        ollamaUrl: this.config.ollamaBaseUrl
+      });
     }
     
     try {
@@ -291,7 +316,24 @@ RECUERDA: ERES ESPECIALIZADO EN CÓDIGO. GENERAS Y EJECUTAS REALMENTE.`;
         throw serverError;
       }
     } catch (error) {
-      throw new Error(`Error con Ollama: ${error.message}`);
+      // Si ya es APIError, re-lanzarlo
+      if (error instanceof APIError) {
+        throw error;
+      }
+      
+      // Detectar errores 404 específicamente
+      if (error.response?.status === 404 || error.message?.includes('404')) {
+        throw APIError.modelNotFound(modelToUse, {
+          suggestion: `Ejecuta: ollama pull ${modelToUse}`,
+          originalError: error.message
+        });
+      }
+      
+      // Otros errores
+      throw APIError.ollamaNotAvailable({
+        model: modelToUse,
+        originalError: error.message
+      });
     }
   }
 

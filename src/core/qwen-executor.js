@@ -215,6 +215,22 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
   }
 
   /**
+   * Verifica si un modelo está disponible en Ollama antes de usarlo
+   */
+  async verifyModelAvailable(modelName) {
+    try {
+      const response = await axios.get(
+        `${this.config.ollamaMcpUrl}/ollama/models/${encodeURIComponent(modelName)}`,
+        { timeout: 5000 }
+      );
+      return response.data?.available === true;
+    } catch (error) {
+      console.warn(`⚠️ No se pudo verificar disponibilidad del modelo ${modelName}:`, error.message);
+      return false; // Si no se puede verificar, asumir que no está disponible
+    }
+  }
+
+  /**
    * Llama a Qwen usando Ollama (local) vía servidor MCP dedicado
    */
   async callOllama(text, attachments = [], onChunk = null, model = null) {
@@ -225,6 +241,15 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
       // Modelo por defecto si no hay ninguno
       modelToUse = 'qwen2.5:7b-instruct';
       console.warn('⚠️ No se especificó modelo Ollama, usando por defecto:', modelToUse);
+    }
+    
+    // Verificar que el modelo esté disponible antes de intentar usarlo
+    const isAvailable = await this.verifyModelAvailable(modelToUse);
+    if (!isAvailable) {
+      throw APIError.modelNotFound(modelToUse, {
+        suggestion: `Ejecuta: ollama pull ${modelToUse}`,
+        ollamaUrl: this.config.ollamaBaseUrl
+      });
     }
     
     // Limpiar nombre del modelo (eliminar sufijos como -q4_K_M si no existe)
@@ -338,7 +363,24 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
         }
       }
     } catch (error) {
-      throw new Error(`Error con Ollama: ${error.message}`);
+      // Si ya es APIError, re-lanzarlo
+      if (error instanceof APIError) {
+        throw error;
+      }
+      
+      // Detectar errores 404 específicamente
+      if (error.response?.status === 404 || error.message?.includes('404')) {
+        throw APIError.modelNotFound(modelToUse, {
+          suggestion: `Ejecuta: ollama pull ${modelToUse}`,
+          originalError: error.message
+        });
+      }
+      
+      // Otros errores
+      throw APIError.ollamaNotAvailable({
+        model: modelToUse,
+        originalError: error.message
+      });
     }
   }
 

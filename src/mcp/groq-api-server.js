@@ -13,6 +13,7 @@
 const express = require('express');
 const axios = require('axios');
 const crypto = require('crypto');
+const { RateLimiterFactory } = require('../utils/rate-limiter');
 const path = require('path');
 
 // Cargar desde qwen-valencia.env (archivo único para Qwen-Valencia)
@@ -103,6 +104,17 @@ class GroqAPIServer {
   setupMiddleware() {
     this.app.use(express.json({ limit: '50mb' }));
     
+    // Rate limiting avanzado
+    this.rateLimiter = RateLimiterFactory.standard({
+      windowMs: 60000, // 1 minuto
+      maxRequests: 100, // 100 requests por minuto
+      keyGenerator: (req) => {
+        // Usar IP o API key si está disponible
+        return req.headers['x-api-key'] || req.ip || 'unknown';
+      }
+    });
+    this.app.use(this.rateLimiter.middleware());
+    
     // CORS completo
     this.app.use((req, res, next) => {
       res.header('Access-Control-Allow-Origin', '*');
@@ -135,164 +147,235 @@ class GroqAPIServer {
       });
     });
     
-    // Chat con Groq API
+    // Chat con Groq API (legacy - deprecated)
     this.app.post('/groq/chat', async (req, res) => {
-      // Verificar límite de requests concurrentes
-      if (this.currentRequests >= this.maxConcurrentRequests) {
-        const { APIError } = require('../utils/api-error');
-        const error = APIError.rateLimitExceeded(null, {
-          reason: 'concurrent_requests_limit',
-          currentRequests: this.currentRequests,
-          maxConcurrentRequests: this.maxConcurrentRequests
-        });
-        return res.status(error.statusCode).json(error.toJSON());
-      }
+      res.setHeader('X-API-Deprecated', 'true');
+      res.setHeader('X-API-Version', 'v1');
+      res.setHeader('X-API-Migration', '/api/v1/groq/chat');
+      await this.handleChatRequest(req, res);
+    });
+    
+    // Listar modelos disponibles (legacy - deprecated)
+    this.app.get('/groq/models', (req, res) => {
+      res.setHeader('X-API-Deprecated', 'true');
+      res.setHeader('X-API-Version', 'v1');
+      res.setHeader('X-API-Migration', '/api/v1/groq/models');
+  /**
+   * Maneja request de chat (extraído para reutilizar en v1 y legacy)
+   */
+  async handleChatRequest(req, res) {
+    // Verificar límite de requests concurrentes
+    if (this.currentRequests >= this.maxConcurrentRequests) {
+      const { APIError } = require('../utils/api-error');
+      const error = APIError.rateLimitExceeded(null, {
+        reason: 'concurrent_requests_limit',
+        currentRequests: this.currentRequests,
+        maxConcurrentRequests: this.maxConcurrentRequests
+      });
+      return res.status(error.statusCode).json(error.toJSON());
+    }
+    
+    this.currentRequests++;
+    this.stats.totalRequests++;
+    
+    const { model, messages, temperature, max_tokens, stream } = req.body;
+    
+    if (!model || !messages) {
+      this.currentRequests--;
+      const { APIError } = require('../utils/api-error');
+      const error = APIError.fromHTTPStatus(
+        400,
+        'model y messages son requeridos',
+        { missing: !model ? ['model'] : ['messages'] }
+      );
+      return res.status(error.statusCode).json(error.toJSON());
+    }
+    
+    // Verificar cache primero
+    const cacheKey = this.generateCacheKey(messages, model);
+    const cached = this.cache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp) < this.cacheTTL) {
+      this.stats.cacheHits++;
+      this.currentRequests--;
+      return res.json({
+        success: true,
+        content: cached.response,
+        cached: true
+      });
+    }
+    
+    this.stats.cacheMisses++;
+    
+    // Intentar con la key actual
+    let attempts = 0;
+    const maxAttempts = this.apiKeys.length;
+    
+    while (attempts < maxAttempts) {
+      const apiKey = this.getCurrentKey();
       
-      this.currentRequests++;
-      this.stats.totalRequests++;
-      
-      const { model, messages, temperature, max_tokens, stream } = req.body;
-      
-      if (!model || !messages) {
-        this.currentRequests--;
-        const { APIError } = require('../utils/api-error');
-        const error = APIError.fromHTTPStatus(
-          400,
-          'model y messages son requeridos',
-          { missing: !model ? ['model'] : ['messages'] }
-        );
-        return res.status(error.statusCode).json(error.toJSON());
-      }
-      
-      // Verificar cache primero
-      const cacheKey = this.generateCacheKey(messages, model);
-      const cached = this.cache.get(cacheKey);
-      if (cached && (Date.now() - cached.timestamp) < this.cacheTTL) {
-        this.stats.cacheHits++;
-        this.currentRequests--;
-        return res.json({
-          success: true,
-          content: cached.response,
-          cached: true
-        });
-      }
-      
-      this.stats.cacheMisses++;
-      
-      // Intentar con la key actual
-      let attempts = 0;
-      const maxAttempts = this.apiKeys.length;
-      
-      while (attempts < maxAttempts) {
-        const apiKey = this.getCurrentKey();
-        
-        // Verificar si la key está bloqueada
-        if (this.keyBlockedUntil.has(apiKey)) {
-          const blockedUntil = this.keyBlockedUntil.get(apiKey);
-          if (Date.now() < blockedUntil) {
-            // Key bloqueada, rotar a la siguiente
-            this.rotateKey();
-            attempts++;
-            continue;
-          } else {
-            // Bloqueo expirado, desbloquear
-            this.keyBlockedUntil.delete(apiKey);
-          }
-        }
-        
-        try {
-          // Limpiar API key: eliminar espacios, saltos de línea, comillas, etc.
-          const cleanApiKey = (apiKey || '').trim().replace(/['"]/g, '').replace(/\s+/g, '');
-          
-          if (!cleanApiKey) {
-            throw new Error('API Key no válida o vacía');
-          }
-          
-          const response = await axios.post(
-            'https://api.groq.com/openai/v1/chat/completions',
-            {
-              model: model || 'llama-3.3-70b-versatile',
-              messages,
-              temperature: temperature || 0.7,
-              max_tokens: max_tokens || 2048,
-              stream: stream || false
-            },
-            {
-              headers: {
-                'Authorization': `Bearer ${cleanApiKey}`,
-                'Content-Type': 'application/json'
-              },
-              timeout: 30000
-            }
-          );
-          
-          // Éxito: incrementar contador de uso
-          const usageCount = (this.keyUsageCount.get(apiKey) || 0) + 1;
-          this.keyUsageCount.set(apiKey, usageCount);
-          
-          // Si alcanzó el límite, rotar key
-          if (usageCount >= this.maxRequestsPerKey) {
-            this.rotateKey();
-            this.stats.keyRotations++;
-          }
-          
-          const content = response.data.choices[0].message.content;
-          
-          // Guardar en cache
-          this.cache.set(cacheKey, {
-            response: content,
-            timestamp: Date.now()
-          });
-          
-          // Limpiar cache si excede tamaño máximo
-          if (this.cache.size > this.maxCacheSize) {
-            const firstKey = this.cache.keys().next().value;
-            this.cache.delete(firstKey);
-          }
-          
-          this.stats.successfulRequests++;
-          this.currentRequests--;
-          
-          return res.json({
-            success: true,
-            content,
-            model: response.data.model || model,
-            usage: response.data.usage
-          });
-          
-        } catch (error) {
-          // Si es error 429 (rate limit) o 401 (invalid key), bloquear key temporalmente
-          if (error.response && (error.response.status === 429 || error.response.status === 401)) {
-            this.keyBlockedUntil.set(apiKey, Date.now() + this.blockDuration);
-            console.warn(`⚠️ Key bloqueada temporalmente: ${error.response.status}`);
-          }
-          
-          // Rotar a la siguiente key
+      // Verificar si la key está bloqueada
+      if (this.keyBlockedUntil.has(apiKey)) {
+        const blockedUntil = this.keyBlockedUntil.get(apiKey);
+        if (Date.now() < blockedUntil) {
+          // Key bloqueada, rotar a la siguiente
           this.rotateKey();
           attempts++;
-          
-          // Si todas las keys fallaron, retornar error estandarizado
-          if (attempts >= maxAttempts) {
-            this.stats.failedRequests++;
-            this.stats.errors++;
-            this.currentRequests--;
-            
-            const { APIError } = require('../utils/api-error');
-            const errorInfo = error.response 
-              ? { statusCode: error.response.status, message: error.message }
-              : { statusCode: 500, message: error.message };
-            
-            const apiError = APIError.fromHTTPStatus(
-              errorInfo.statusCode,
-              `Error con Groq API: ${errorInfo.message}. Todas las keys fueron intentadas.`,
-              { attempts, maxAttempts }
-            );
-            
-            return res.status(apiError.statusCode).json(apiError.toJSON());
-          }
+          continue;
+        } else {
+          // Bloqueo expirado, desbloquear
+          this.keyBlockedUntil.delete(apiKey);
         }
       }
+      
+      try {
+        // Limpiar API key: eliminar espacios, saltos de línea, comillas, etc.
+        const cleanApiKey = (apiKey || '').trim().replace(/['"]/g, '').replace(/\s+/g, '');
+        
+        if (!cleanApiKey) {
+          throw new Error('API Key no válida o vacía');
+        }
+        
+        const response = await axios.post(
+          'https://api.groq.com/openai/v1/chat/completions',
+          {
+            model: model || 'llama-3.3-70b-versatile',
+            messages,
+            temperature: temperature || 0.7,
+            max_tokens: max_tokens || 2048,
+            stream: stream || false
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${cleanApiKey}`,
+              'Content-Type': 'application/json'
+            },
+            timeout: 30000
+          }
+        );
+        
+        // Éxito: incrementar contador de uso
+        const usageCount = (this.keyUsageCount.get(apiKey) || 0) + 1;
+        this.keyUsageCount.set(apiKey, usageCount);
+        
+        // Si alcanzó el límite, rotar key
+        if (usageCount >= this.maxRequestsPerKey) {
+          this.rotateKey();
+          this.stats.keyRotations++;
+        }
+        
+        const content = response.data.choices[0].message.content;
+        
+        // Guardar en cache
+        this.cache.set(cacheKey, {
+          response: content,
+          timestamp: Date.now()
+        });
+        
+        // Limpiar cache si excede tamaño máximo
+        if (this.cache.size > this.maxCacheSize) {
+          const firstKey = this.cache.keys().next().value;
+          this.cache.delete(firstKey);
+        }
+        
+        this.stats.successfulRequests++;
+        this.currentRequests--;
+        
+        return res.json({
+          success: true,
+          content,
+          model: response.data.model || model,
+          usage: response.data.usage
+        });
+        
+      } catch (error) {
+        // Si es error 429 (rate limit) o 401 (invalid key), bloquear key temporalmente
+        if (error.response && (error.response.status === 429 || error.response.status === 401)) {
+          this.keyBlockedUntil.set(apiKey, Date.now() + this.blockDuration);
+          console.warn(`⚠️ Key bloqueada temporalmente: ${error.response.status}`);
+        }
+        
+        // Rotar a la siguiente key
+        this.rotateKey();
+        attempts++;
+        
+        // Si todas las keys fallaron, retornar error estandarizado
+        if (attempts >= maxAttempts) {
+          this.stats.failedRequests++;
+          this.stats.errors++;
+          this.currentRequests--;
+          
+          const { APIError } = require('../utils/api-error');
+          const errorInfo = error.response 
+            ? { statusCode: error.response.status, message: error.message }
+            : { statusCode: 500, message: error.message };
+          
+          const apiError = APIError.fromHTTPStatus(
+            errorInfo.statusCode,
+            `Error con Groq API: ${errorInfo.message}. Todas las keys fueron intentadas.`,
+            { attempts, maxAttempts }
+          );
+          
+          return res.status(apiError.statusCode).json(apiError.toJSON());
+        }
+      }
+    }
+  }
+  
+  setupRoutes() {
+    // ==================== API V1 (Versionado) ====================
+    const v1Router = express.Router();
+    
+    // Health check v1
+    v1Router.get('/health', (req, res) => {
+      res.json({
+        status: 'healthy',
+        service: 'groq-api',
+        version: 'v1',
+        apiKeysCount: this.apiKeys.length,
+        currentKeyIndex: this.currentKeyIndex,
+        cacheSize: this.cache.size,
+        stats: this.stats
+      });
     });
+    
+    // Listar modelos disponibles v1
+    v1Router.get('/models', (req, res) => {
+      res.json({
+        success: true,
+        version: 'v1',
+        models: this.availableModels,
+        defaultModel: 'llama-3.3-70b-versatile'
+      });
+    });
+    
+    // Chat con Groq API v1
+    v1Router.post('/chat', async (req, res) => {
+      await this.handleChatRequest(req, res);
+    });
+    
+    // Estadísticas v1
+    v1Router.get('/stats', (req, res) => {
+      res.json({
+        ...this.stats,
+        version: 'v1'
+      });
+    });
+    
+    // Limpiar cache v1
+    v1Router.post('/cache/clear', (req, res) => {
+      this.cache.clear();
+      res.json({ success: true, message: 'Cache limpiado', version: 'v1' });
+    });
+    
+    // Montar router v1
+    this.app.use('/api/v1/groq', v1Router);
+    
+    // ==================== LEGACY ENDPOINTS (Deprecated) ====================
+    // Health check
+    this.app.get('/groq/health', (req, res) => {
+      res.setHeader('X-API-Deprecated', 'true');
+      res.setHeader('X-API-Version', 'v1');
+      res.setHeader('X-API-Migration', '/api/v1/groq/health');
     
     // Estadísticas
     this.app.get('/groq/stats', (req, res) => {
