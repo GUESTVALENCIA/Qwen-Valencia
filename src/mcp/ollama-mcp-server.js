@@ -297,9 +297,9 @@ class OllamaMCPServer extends EventEmitter {
     });
     
     // Chat con streaming (SSE) - con validación
-    this.app.post('/ollama/chat/stream',
-      this.validator.validate('/ollama/chat/stream', ValidatorMiddleware.commonSchemas.ollamaChatRequest),
-    this.app.post('/ollama/stream/chat', async (req, res) => {
+    this.app.post('/ollama/stream/chat',
+      this.validator.validate('/ollama/stream/chat', ValidatorMiddleware.commonSchemas.ollamaChatRequest),
+      async (req, res) => {
       // Verificar límite de requests concurrentes
       if (this.currentRequests >= this.maxConcurrentRequests) {
         return res.status(429).json({ 
@@ -389,8 +389,10 @@ class OllamaMCPServer extends EventEmitter {
       }
     });
     
-    // Chat sin streaming (más rápido para respuestas cortas)
-    this.app.post('/ollama/chat', async (req, res) => {
+    // Chat sin streaming (más rápido para respuestas cortas) - con validación
+    this.app.post('/ollama/chat',
+      this.validator.validate('/ollama/chat', ValidatorMiddleware.commonSchemas.ollamaChatRequest),
+      async (req, res) => {
       // Verificar límite de requests concurrentes
       if (this.currentRequests >= this.maxConcurrentRequests) {
         return res.status(429).json({ 
