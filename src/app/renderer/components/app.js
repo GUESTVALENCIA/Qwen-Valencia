@@ -726,6 +726,20 @@ function selectModel(modelId) {
     }
 }
 
+/**
+ * Verificar si un modelo es Qwen (no solo buscar 'qwen' como substring)
+ * @param {string} modelId - ID del modelo
+ * @returns {boolean} true si es un modelo Qwen
+ */
+function isQwenModel(modelId) {
+    if (!modelId) return false;
+    // Modelos Qwen empiezan con 'qwen' o tienen patrón 'qwen-2.5' o 'qwen2.5'
+    // Excluir modelos DeepSeek que contienen 'qwen' en el nombre (ej: deepseek-r1-distill-qwen-7b)
+    return modelId.startsWith('qwen') || 
+           modelId.startsWith('qwen-2.5') || 
+           modelId.startsWith('qwen2.5');
+}
+
 function getAutoModel(message, hasImage = false) {
     const lower = message.toLowerCase();
     
@@ -844,7 +858,7 @@ async function sendMessage() {
     
     const hasImage = !!state.attachedImage;
     // Nota: qwen2.5vl:3b fue eliminado, usar Qwen estándar para imágenes
-    if (hasImage && state.model !== 'auto' && !state.model.includes('qwen')) {
+    if (hasImage && state.model !== 'auto' && !isQwenModel(state.model)) {
         // Si hay imagen y no es Qwen, cambiar a Qwen (local o API según useAPI)
         const previousModel = state.model;
         state.model = state.useAPI ? 'qwen-2.5-72b-instruct' : 'qwen2.5:7b-instruct';
@@ -1342,7 +1356,7 @@ function captureImageForIA() {
     state.attachedImage = base64;
     showAttachment(dataUrl);
     
-    if (state.model === 'auto' || !state.model.includes('vl')) {
+    if (state.model === 'auto' || !isQwenModel(state.model)) {
         // Usar Qwen estándar (local o API según useAPI) para imágenes
         state.model = state.useAPI ? 'qwen-2.5-72b-instruct' : 'qwen2.5:7b-instruct';
         updateModelButtonDisplay(MODELS[state.model]?.compact || 'Qwen');
