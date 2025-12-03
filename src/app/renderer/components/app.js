@@ -4,7 +4,14 @@
 // Adaptado de Sandra Studio Ultimate para Qwen-Valencia
 // Solo modelos Qwen y DeepSeek (Ollama y Groq)
 // Optimizado: 6+ modelos API, 2 modelos locales ligeros
+// Enterprise-Level: Logger estructurado, State Manager, Event Manager
 // ═══════════════════════════════════════════════════════════════════
+
+// Importar módulos enterprise-level
+const { defaultLogger, LoggerFactory } = require('../utils/logger');
+const { getStateManager } = require('../core/state-manager');
+const { getEventManager } = require('../core/event-manager');
+const { getAPIService } = require('../services/api-service');
 
 /**
  * Verificar memoria RAM disponible del sistema (RAM real, no heap de JavaScript)
@@ -26,7 +33,11 @@ async function checkMemoryAvailable() {
             }
         }
     } catch (error) {
-        console.warn('⚠️ No se pudo obtener memoria del sistema:', error);
+        if (typeof window !== 'undefined' && window.logger) {
+            window.logger.warn('No se pudo obtener memoria del sistema', { error: error.message });
+        } else {
+            console.warn('⚠️ No se pudo obtener memoria del sistema:', error);
+        }
     }
     return null;
 }
@@ -44,36 +55,97 @@ async function hasEnoughMemoryForLocalModels() {
     return memory.available >= minRequiredMB;
 }
 
-// Estado global
-const state = {
-    model: 'qwen2.5:7b-instruct',
-    mode: 'agent',
-    messages: [],
-    isGenerating: false,
-    attachedImage: null,
-    stream: null,
-    config: {
-        ollamaUrl: 'http://localhost:11434',
-        temperature: 0.7,
-        maxTokens: 4096
-    },
-    theme: 'dark',
-    mediaStream: null,
-    recognition: null,
-    isListening: false,
-    deepgramConnection: null,
-    isRecording: false,
-    recordingStartTime: null,
-    recordingMaxTime: 20 * 60 * 1000, // 20 minutos
-    ttsInterval: null,
-    lastTTSAt: null,
-    voiceCallActive: false,
-    deepgramAvailable: false,
-    useAPI: true, // Por defecto usar API (Groq)
-    micActive: false,
-    micStream: null,
-    micRecorder: null
-};
+// Estado global - Usar StateManager si está disponible, sino objeto simple
+let stateManager = null;
+let state = null;
+
+// Inicializar StateManager si está disponible
+try {
+    if (typeof window !== 'undefined' && window.getStateManager) {
+        stateManager = window.getStateManager();
+        state = stateManager.getState();
+        
+        // Crear proxy para mantener compatibilidad con código existente
+        state = new Proxy(state, {
+            set(target, prop, value) {
+                target[prop] = value;
+                if (stateManager) {
+                    stateManager.set(prop, value);
+                }
+                return true;
+            },
+            get(target, prop) {
+                if (prop === 'getState') {
+                    return () => stateManager ? stateManager.getState() : target;
+                }
+                return target[prop];
+            }
+        });
+    } else {
+        // Fallback a objeto simple si StateManager no está disponible
+        state = {
+            model: 'qwen2.5:7b-instruct',
+            mode: 'agent',
+            messages: [],
+            isGenerating: false,
+            attachedImage: null,
+            stream: null,
+            config: {
+                ollamaUrl: 'http://localhost:11434',
+                temperature: 0.7,
+                maxTokens: 4096
+            },
+            theme: 'dark',
+            mediaStream: null,
+            recognition: null,
+            isListening: false,
+            deepgramConnection: null,
+            isRecording: false,
+            recordingStartTime: null,
+            recordingMaxTime: 20 * 60 * 1000, // 20 minutos
+            ttsInterval: null,
+            lastTTSAt: null,
+            voiceCallActive: false,
+            deepgramAvailable: false,
+            useAPI: true, // Por defecto usar API (Groq)
+            micActive: false,
+            micStream: null,
+            micRecorder: null
+        };
+    }
+} catch (error) {
+    // Fallback si hay error inicializando StateManager
+    console.warn('Error inicializando StateManager, usando estado simple:', error);
+    state = {
+        model: 'qwen2.5:7b-instruct',
+        mode: 'agent',
+        messages: [],
+        isGenerating: false,
+        attachedImage: null,
+        stream: null,
+        config: {
+            ollamaUrl: 'http://localhost:11434',
+            temperature: 0.7,
+            maxTokens: 4096
+        },
+        theme: 'dark',
+        mediaStream: null,
+        recognition: null,
+        isListening: false,
+        deepgramConnection: null,
+        isRecording: false,
+        recordingStartTime: null,
+        recordingMaxTime: 20 * 60 * 1000,
+        ttsInterval: null,
+        lastTTSAt: null,
+        voiceCallActive: false,
+        deepgramAvailable: false,
+        useAPI: true,
+        micActive: false,
+        micStream: null,
+        micRecorder: null
+    };
+}
 
 // Variables globales de Avatar (declaradas antes de uso)
 let avatarSession = null;
@@ -707,7 +779,11 @@ function selectModel(modelId) {
         updateModelButtonDisplay(MODELS[modelId]?.compact || modelId);
         
         // Log para debug
-        console.log(`✅ Modelo seleccionado: ${modelId}`, MODELS[modelId]);
+        if (typeof window !== 'undefined' && window.logger) {
+            window.logger.info('Modelo seleccionado', { modelId, model: MODELS[modelId] });
+        } else {
+            console.log(`✅ Modelo seleccionado: ${modelId}`, MODELS[modelId]);
+        }
     }
     
     if (state.attachedImage && modelId === 'auto') {
@@ -863,7 +939,14 @@ async function sendMessage() {
         const previousModel = state.model;
         state.model = state.useAPI ? 'qwen-2.5-72b-instruct' : 'qwen2.5:7b-instruct';
         updateModelButtonDisplay(MODELS[state.model]?.compact || 'Qwen');
-        console.log(`🖼️ Imagen detectada: Cambiando de ${previousModel} a ${state.model} para procesamiento de imágenes`);
+        if (typeof window !== 'undefined' && window.logger) {
+            window.logger.info('Imagen detectada, cambiando modelo', { 
+                from: previousModel, 
+                to: state.model 
+            });
+        } else {
+            console.log(`🖼️ Imagen detectada: Cambiando de ${previousModel} a ${state.model} para procesamiento de imágenes`);
+        }
     }
     
     let modelsToUse = [];
@@ -917,7 +1000,14 @@ async function sendMessage() {
             await sendToMultipleModels(message, modelsToUse, attachedImage);
         }
     } catch (error) {
-        console.error('Error enviando mensaje:', error);
+        if (typeof window !== 'undefined' && window.logger) {
+            window.logger.error('Error enviando mensaje', { 
+                error: error.message,
+                stack: error.stack 
+            });
+        } else {
+            console.error('Error enviando mensaje:', error);
+        }
         let errorMessage = error.message || 'Error desconocido';
         let userFriendlyMessage = '';
         
@@ -994,7 +1084,8 @@ async function routeToModel(modelId, message, image = null) {
     const modelToUse = modelId || state.model;
     
     // Log para debug
-    console.log(`🎯 Enrutando mensaje con modelo: ${modelToUse}`, {
+    if (typeof window !== 'undefined' && window.logger) {
+        window.logger.debug('Enrutando mensaje', {
         modelId,
         stateModel: state.model,
         useAPI: state.useAPI,
@@ -1016,7 +1107,14 @@ async function routeToModel(modelId, message, image = null) {
             throw new Error(result.error || 'Error desconocido');
         }
     } catch (error) {
-        console.error('Error en routeToModel:', error);
+        if (typeof window !== 'undefined' && window.logger) {
+            window.logger.error('Error en routeToModel', { 
+                error: error.message,
+                model: modelToUse 
+            });
+        } else {
+            console.error('Error en routeToModel:', error);
+        }
         
         // Mejorar mensaje de error antes de lanzarlo
         let improvedError = error;
@@ -1324,11 +1422,21 @@ async function initMediaDevices() {
         
         stream.getTracks().forEach(track => track.stop());
         
-        console.log('✅ Permisos de cámara y micrófono obtenidos');
+        if (typeof window !== 'undefined' && window.logger) {
+            window.logger.info('Permisos de cámara y micrófono obtenidos');
+        } else {
+            console.log('✅ Permisos de cámara y micrófono obtenidos');
+        }
         localStorage.setItem('mediaPermissionsGranted', 'true');
         
     } catch (error) {
-        console.warn('⚠️ No se pudieron obtener permisos de medios:', error.message);
+        if (typeof window !== 'undefined' && window.logger) {
+            window.logger.warn('No se pudieron obtener permisos de medios', { 
+                error: error.message 
+            });
+        } else {
+            console.warn('⚠️ No se pudieron obtener permisos de medios:', error.message);
+        }
     }
 }
 
