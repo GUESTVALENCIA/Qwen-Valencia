@@ -14,6 +14,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const axios = require('axios');
 const express = require('express');
+const os = require('os');
 const ModelRouter = require('../orchestrator/model-router');
 const MCPUniversal = require('../mcp/mcp-universal');
 const OllamaMCPServer = require('../mcp/ollama-mcp-server');
@@ -777,6 +778,28 @@ ipcMain.handle('get-mcp-master-status', async (event) => {
       running: false,
       error: error.message
     };
+  }
+});
+
+/**
+ * Handler para obtener memoria del sistema (RAM real)
+ */
+ipcMain.handle('get-system-memory', async (event) => {
+  try {
+    const totalBytes = os.totalmem();
+    const freeBytes = os.freemem();
+    const usedBytes = totalBytes - freeBytes;
+    
+    return {
+      total: totalBytes / (1024 * 1024), // MB
+      free: freeBytes / (1024 * 1024),   // MB
+      used: usedBytes / (1024 * 1024),   // MB
+      available: freeBytes / (1024 * 1024), // MB (alias de free)
+      percentage: (usedBytes / totalBytes) * 100
+    };
+  } catch (error) {
+    console.error('❌ Error obteniendo memoria del sistema:', error);
+    return null;
   }
 });
 

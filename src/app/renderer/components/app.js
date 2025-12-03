@@ -7,36 +7,39 @@
 // ═══════════════════════════════════════════════════════════════════
 
 /**
- * Verificar memoria RAM disponible
- * @returns {object} Información de memoria disponible
+ * Verificar memoria RAM disponible del sistema (RAM real, no heap de JavaScript)
+ * @returns {Promise<object|null>} Información de memoria disponible del sistema
  */
-function checkMemoryAvailable() {
-    if (typeof performance !== 'undefined' && performance.memory) {
-        const memory = performance.memory;
-        const totalMB = memory.jsHeapSizeLimit / (1024 * 1024);
-        const usedMB = memory.usedJSHeapSize / (1024 * 1024);
-        const availableMB = totalMB - usedMB;
-        
-        return {
-            total: totalMB,
-            used: usedMB,
-            available: availableMB,
-            percentage: (usedMB / totalMB) * 100
-        };
+async function checkMemoryAvailable() {
+    try {
+        // Usar IPC para obtener memoria real del sistema desde el proceso principal
+        if (window.qwenValencia && window.qwenValencia.getSystemMemory) {
+            const memory = await window.qwenValencia.getSystemMemory();
+            if (memory) {
+                return {
+                    total: memory.total,      // MB de RAM total del sistema
+                    used: memory.used,        // MB de RAM usada
+                    available: memory.available, // MB de RAM libre
+                    free: memory.free,        // MB de RAM libre (alias)
+                    percentage: memory.percentage // Porcentaje de uso
+                };
+            }
+        }
+    } catch (error) {
+        console.warn('⚠️ No se pudo obtener memoria del sistema:', error);
     }
     return null;
 }
 
 /**
  * Verificar si hay suficiente memoria para modelos locales
- * @returns {boolean} true si hay suficiente memoria
+ * @returns {Promise<boolean>} true si hay suficiente memoria
  */
-function hasEnoughMemoryForLocalModels() {
-    const memory = checkMemoryAvailable();
+async function hasEnoughMemoryForLocalModels() {
+    const memory = await checkMemoryAvailable();
     if (!memory) return true; // Si no se puede verificar, asumir que hay suficiente
     
-    // Advertir si hay menos de 8GB disponibles (aproximado)
-    // Los modelos locales requieren al menos 4-6GB de RAM libre
+    // Los modelos locales requieren al menos 4GB de RAM libre del sistema
     const minRequiredMB = 4096; // 4GB mínimo
     return memory.available >= minRequiredMB;
 }
@@ -859,14 +862,20 @@ async function sendMessage() {
         modelsToUse = [state.model];
     }
     
-    // Verificar memoria antes de usar modelos locales
+    // Verificar memoria antes de usar modelos locales (RAM real del sistema)
     const hasLocalModels = modelsToUse.some(modelId => modelId && modelId.includes(':'));
     if (hasLocalModels && !state.useAPI) {
-        if (!hasEnoughMemoryForLocalModels()) {
-            const memory = checkMemoryAvailable();
-            const memoryGB = memory ? (memory.available / 1024).toFixed(1) : 'desconocida';
-            showToast(`⚠️ Memoria RAM baja (${memoryGB}GB disponible). Los modelos locales requieren al menos 4GB. Considera usar modelos API.`, 'warning');
-        }
+        // Verificar memoria del sistema de forma asíncrona
+        hasEnoughMemoryForLocalModels().then(hasEnough => {
+            if (!hasEnough) {
+                checkMemoryAvailable().then(memory => {
+                    if (memory) {
+                        const memoryGB = (memory.available / 1024).toFixed(1);
+                        showToast(`⚠️ Memoria RAM del sistema baja (${memoryGB}GB disponible). Los modelos locales requieren al menos 4GB. Considera usar modelos API.`, 'warning');
+                    }
+                });
+            }
+        });
     }
     
     addMessage('user', message, state.attachedImage);

@@ -237,6 +237,13 @@ contextBridge.exposeInMainWorld('qwenValencia', {
   },
 
   /**
+   * Obtener memoria del sistema (RAM real)
+   */
+  getSystemMemory: async () => {
+    return await ipcRenderer.invoke('get-system-memory');
+  },
+
+  /**
    * Controles de ventana
    */
   minimize: () => {
