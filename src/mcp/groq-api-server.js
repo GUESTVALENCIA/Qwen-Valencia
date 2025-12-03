@@ -14,6 +14,8 @@ const express = require('express');
 const axios = require('axios');
 const crypto = require('crypto');
 const { RateLimiterFactory } = require('../utils/rate-limiter');
+const { LoggerFactory } = require('../utils/logger');
+const { MetricsFactory } = require('../utils/metrics');
 const path = require('path');
 
 // Cargar desde qwen-valencia.env (archivo único para Qwen-Valencia)
