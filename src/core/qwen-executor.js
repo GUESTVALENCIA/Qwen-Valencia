@@ -18,6 +18,10 @@ const { circuitBreakerManager } = require('../utils/circuit-breaker');
 const { retry } = require('../utils/retry');
 const { LoggerFactory } = require('../utils/logger');
 
+/**
+ * @typedef {import('../types')} Types
+ */
+
 class QwenExecutor {
   constructor(config = {}) {
     this.logger = LoggerFactory.create({ service: 'qwen-executor' });
@@ -237,6 +241,11 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
 
   /**
    * Llama a Qwen usando Ollama (local) vía servidor MCP dedicado
+   * @param {string} text - Texto del mensaje
+   * @param {Types.ImageAttachment[]} attachments - Attachments (imágenes)
+   * @param {Function|null} onChunk - Callback para chunks de streaming
+   * @param {Types.ModelId|null} model - Modelo a usar (opcional)
+   * @returns {Promise<string>} Respuesta del modelo
    */
   async callOllama(text, attachments = [], onChunk = null, model = null) {
     // Validar que tenemos un modelo
