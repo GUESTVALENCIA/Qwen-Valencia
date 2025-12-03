@@ -12,6 +12,11 @@
 // No usar require() aquí porque estamos en el renderer process de Electron
 
 /**
+ * @typedef {import('../../../types')} Types
+ * Tipos compartidos frontend-backend
+ */
+
+/**
  * Verificar memoria RAM disponible del sistema (RAM real, no heap de JavaScript)
  * @returns {Promise<object|null>} Información de memoria disponible del sistema
  */
@@ -801,17 +806,45 @@ function selectModel(modelId) {
 }
 
 /**
- * Verificar si un modelo es Qwen (no solo buscar 'qwen' como substring)
+ * Lista explícita de IDs de modelos Qwen (robusta y mantenible)
+ * Actualizada automáticamente desde MODELS para evitar falsos positivos
+ */
+const QWEN_MODEL_IDS = Object.keys(MODELS).filter(id => {
+    if (id === 'auto') return false;
+    const model = MODELS[id];
+    // Verificar que el nombre contenga 'Qwen' y no sea DeepSeek
+    return model.name.includes('Qwen') && !model.name.includes('DeepSeek');
+});
+
+/**
+ * Verificar si un modelo es Qwen usando lista explícita (robusta)
  * @param {string} modelId - ID del modelo
  * @returns {boolean} true si es un modelo Qwen
  */
 function isQwenModel(modelId) {
     if (!modelId) return false;
-    // Modelos Qwen empiezan con 'qwen' o tienen patrón 'qwen-2.5' o 'qwen2.5'
-    // Excluir modelos DeepSeek que contienen 'qwen' en el nombre (ej: deepseek-r1-distill-qwen-7b)
-    return modelId.startsWith('qwen') || 
-           modelId.startsWith('qwen-2.5') || 
-           modelId.startsWith('qwen2.5');
+    
+    // Verificar en lista explícita de modelos Qwen (más robusto)
+    if (QWEN_MODEL_IDS.includes(modelId)) {
+        return true;
+    }
+    
+    // Fallback: verificar en MODELS si existe y es Qwen
+    if (MODELS[modelId]) {
+        const model = MODELS[modelId];
+        return model.name.includes('Qwen') && !model.name.includes('DeepSeek');
+    }
+    
+    // Fallback adicional: verificar patrón solo si no hay riesgo de falsos positivos
+    // Solo modelos que empiezan con 'qwen' Y no contienen 'deepseek' ni 'distill'
+    const lowerModelId = modelId.toLowerCase();
+    if (lowerModelId.startsWith('qwen') && 
+        !lowerModelId.includes('deepseek') && 
+        !lowerModelId.includes('distill')) {
+        return true;
+    }
+    
+    return false;
 }
 
 function getAutoModel(message, hasImage = false) {
@@ -914,6 +947,10 @@ function getProviderFromModel(model) {
     return modelInfo.provider.toLowerCase() || 'ollama';
 }
 
+/**
+ * Envía un mensaje al modelo seleccionado
+ * @returns {Promise<void>}
+ */
 async function sendMessage() {
     const input = document.getElementById('chatInput');
     if (!input) return;
