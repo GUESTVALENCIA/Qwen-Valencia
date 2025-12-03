@@ -139,9 +139,9 @@ class OllamaMCPServer extends EventEmitter {
         process.env.NODE_OPTIONS += ' --max-old-space-size=2048';
       }
       
-      console.log('✅ Límites de recursos configurados');
+      this.logger.info('Límites de recursos configurados');
     } catch (error) {
-      console.warn('⚠️ No se pudieron configurar límites de recursos:', error.message);
+      this.logger.warn('No se pudieron configurar límites de recursos', { error: error.message });
     }
   }
   
@@ -735,7 +735,8 @@ class OllamaMCPServer extends EventEmitter {
 if (require.main === module) {
   const server = new OllamaMCPServer();
   server.start().catch(error => {
-    console.error('❌ Error iniciando Ollama MCP Server:', error);
+    const logger = LoggerFactory.create('ollama-mcp-server');
+    logger.error('Error iniciando Ollama MCP Server', { error: error.message, stack: error.stack });
     process.exit(1);
   });
 }

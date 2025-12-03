@@ -291,7 +291,7 @@ class MCPUniversal {
             return res.status(400).json({ error: `Lenguaje no soportado: ${language}` });
         }
         
-        console.log(`⚡ [MCP] Ejecutando código ${language}:`, code.substring(0, 100));
+        this.logger.debug('Ejecutando código', { language, codePreview: code.substring(0, 100) });
         
         const { stdout, stderr } = await execAsync(command, {
           cwd: workDir,
@@ -423,7 +423,7 @@ class MCPUniversal {
         
         const workDir = cwd || process.cwd();
         
-        console.log(`⚡ [MCP] Ejecutando comando: ${command}`);
+        this.logger.debug('Ejecutando comando', { command });
         
         const { stdout, stderr } = await execAsync(command, {
           cwd: workDir,
@@ -453,15 +453,15 @@ class MCPUniversal {
   setupWebSocket() {
     this.wss.on('connection', (ws) => {
       this.wsClients.add(ws);
-      console.log('✅ Cliente WebSocket conectado');
+      this.logger.info('Cliente WebSocket conectado');
       
       ws.on('close', () => {
         this.wsClients.delete(ws);
-        console.log('❌ Cliente WebSocket desconectado');
+        this.logger.info('Cliente WebSocket desconectado');
       });
       
       ws.on('error', (error) => {
-        console.error('❌ Error WebSocket:', error);
+        this.logger.error('Error WebSocket', { error: error.message });
       });
     });
   }
@@ -524,12 +524,12 @@ class MCPUniversal {
               const parts = line.trim().split(/\s+/);
               const pid = parts[parts.length - 1];
               if (pid && !isNaN(pid)) {
-                console.log(`⚠️ Detectado proceso en puerto 3001 (PID: ${pid}), intentando detener...`);
+                this.logger.warn('Detectado proceso en puerto 3001, intentando detener', { pid });
                 try {
                   await execAsync(`taskkill /PID ${pid} /F`);
-                  console.log(`✅ Proceso ${pid} detenido`);
+                  this.logger.info('Proceso detenido', { pid });
                 } catch (e) {
-                  console.warn(`⚠️ No se pudo detener proceso ${pid}:`, e.message);
+                  this.logger.warn('No se pudo detener proceso', { pid, error: e.message });
                 }
               }
             }
@@ -554,9 +554,8 @@ class MCPUniversal {
     const available = await this.isPortAvailable(this.port);
     
     if (!available) {
-      console.error(`❌ Puerto ${this.port} ya está en uso`);
-      console.log(`💡 Intenta detener el proceso que usa el puerto ${this.port}`);
-      console.log(`💡 O ejecuta: DETENER_TODO.bat`);
+      this.logger.error('Puerto ya está en uso', { port: this.port });
+      this.logger.info('Intenta detener el proceso que usa el puerto o ejecuta DETENER_TODO.bat', { port: this.port });
       return false;
     }
     
@@ -611,7 +610,8 @@ class MCPUniversal {
 if (require.main === module) {
   const mcp = new MCPUniversal();
   mcp.start().catch(error => {
-    console.error('❌ Error iniciando servidor:', error);
+    const logger = LoggerFactory.create('mcp-universal');
+    logger.error('Error iniciando servidor', { error: error.message, stack: error.stack });
     process.exit(1);
   });
 }

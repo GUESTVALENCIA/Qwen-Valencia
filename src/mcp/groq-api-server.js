@@ -641,7 +641,8 @@ class GroqAPIServer {
 if (require.main === module) {
   const server = new GroqAPIServer();
   server.start().catch(error => {
-    console.error('❌ Error iniciando Groq API Server:', error);
+    const logger = LoggerFactory.create('groq-api-server');
+    logger.error('Error iniciando Groq API Server', { error: error.message, stack: error.stack });
     process.exit(1);
   });
 }
