@@ -8,10 +8,8 @@
 // ═══════════════════════════════════════════════════════════════════
 
 // Importar módulos enterprise-level
-const { defaultLogger, LoggerFactory } = require('../utils/logger');
-const { getStateManager } = require('../core/state-manager');
-const { getEventManager } = require('../core/event-manager');
-const { getAPIService } = require('../services/api-service');
+// Nota: En el navegador, estos módulos se cargan como scripts globales en index.html
+// No usar require() aquí porque estamos en el renderer process de Electron
 
 /**
  * Verificar memoria RAM disponible del sistema (RAM real, no heap de JavaScript)
