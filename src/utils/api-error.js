@@ -190,6 +190,32 @@ class APIError extends Error {
       true
     );
   }
+
+  /**
+   * Factory method: Error de request inválido
+   */
+  static invalidRequest(message, details = {}) {
+    return new APIError(
+      ErrorCodes.ERR_INVALID_REQUEST,
+      message || 'Request inválido',
+      400,
+      details,
+      false
+    );
+  }
+
+  /**
+   * Factory method: Error de autenticación requerida
+   */
+  static authRequired(message = 'Autenticación requerida', details = {}) {
+    return new APIError(
+      ErrorCodes.ERR_AUTH_REQUIRED,
+      message,
+      401,
+      details,
+      false
+    );
+  }
 }
 
 /**
@@ -249,33 +275,6 @@ function extractErrorInfo(error) {
     message: error.message || 'Error desconocido',
     details: {}
   };
-}
-
-  /**
-   * Factory method: Error de request inválido
-   */
-  static invalidRequest(message, details = {}) {
-    return new APIError(
-      ErrorCodes.ERR_INVALID_REQUEST,
-      message || 'Request inválido',
-      400,
-      details,
-      false
-    );
-  }
-
-  /**
-   * Factory method: Error de autenticación requerida
-   */
-  static authRequired(message = 'Autenticación requerida', details = {}) {
-    return new APIError(
-      ErrorCodes.ERR_AUTH_REQUIRED,
-      message,
-      401,
-      details,
-      false
-    );
-  }
 }
 
 module.exports = {
