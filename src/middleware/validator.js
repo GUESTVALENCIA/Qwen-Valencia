@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════════════════
 
 const { APIError } = require('../utils/api-error');
+const { ValidationSchemas, validateMessages, validateAttachments } = require('../types/validation-schemas');
 
 /**
  * Validador de entrada centralizado
@@ -195,28 +196,11 @@ class ValidatorMiddleware {
 
   /**
    * Esquemas predefinidos comunes
+   * Usa esquemas compartidos de validation-schemas.js
    */
-  static commonSchemas = {
-    chatRequest: {
-      body: {
-        model: { type: 'string', required: true, minLength: 1 },
-        messages: { type: 'array', required: true },
-        temperature: { type: 'number', min: 0, max: 2 },
-        max_tokens: { type: 'number', min: 1, max: 4096 },
-        stream: { type: 'boolean' }
-      }
-    },
-    
-    modelRequest: {
-      params: {
-        modelName: { type: 'string', required: true, minLength: 1 }
-      }
-    },
-    
-    healthCheck: {
-      // Sin validación para health checks
-    }
-  };
+  static get commonSchemas() {
+    return ValidationSchemas;
+  }
 
   /**
    * Factory method

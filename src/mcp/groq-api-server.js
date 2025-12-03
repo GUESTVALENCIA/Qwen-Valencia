@@ -422,10 +422,13 @@ class GroqAPIServer {
       });
     });
     
-    // Chat con Groq API v1
-    v1Router.post('/chat', async (req, res) => {
-      await this.handleChatRequest(req, res);
-    });
+    // Chat con Groq API v1 (con validación)
+    v1Router.post('/chat', 
+      this.validator.validate('/api/v1/groq/chat', ValidatorMiddleware.commonSchemas.chatRequest),
+      async (req, res) => {
+        await this.handleChatRequest(req, res);
+      }
+    );
     
     // Estadísticas v1
     v1Router.get('/stats', (req, res) => {
