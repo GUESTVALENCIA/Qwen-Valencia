@@ -152,24 +152,39 @@ class ModelRouter {
     } catch (error) {
       console.error('❌ Error en routing:', error);
       
-      // Fallback: intentar con Qwen
+      // Fallback inteligente: cambiar a modo 'auto' y intentar con Qwen
       try {
-        console.log('🔄 Intentando fallback a Qwen...');
-        const fallbackResponse = await this.qwen.execute(text, attachments);
+        console.log('🔄 Intentando fallback a Qwen con modo auto...');
         
-        return {
-          success: true,
-          model: 'qwen',
-          taskType: 'fallback',
-          response: fallbackResponse,
-          modality,
-          warning: 'Fallback activado debido a error'
-        };
+        // Cambiar temporalmente a modo 'auto' para permitir fallback Groq → Ollama
+        const originalQwenMode = this.qwen.config.mode;
+        const originalDeepseekMode = this.deepseek.config.mode;
+        
+        this.qwen.config.mode = 'auto';
+        this.deepseek.config.mode = 'auto';
+        
+        try {
+          const fallbackResponse = await this.qwen.execute(text, attachments);
+          
+          return {
+            success: true,
+            model: 'qwen',
+            taskType: 'fallback',
+            response: fallbackResponse,
+            modality,
+            warning: 'Fallback activado debido a error'
+          };
+        } finally {
+          // Restaurar modos originales
+          this.qwen.config.mode = originalQwenMode;
+          this.deepseek.config.mode = originalDeepseekMode;
+        }
       } catch (fallbackError) {
         return {
           success: false,
           error: error.message,
-          fallbackError: fallbackError.message
+          fallbackError: fallbackError.message,
+          allProvidersFailed: true
         };
       }
     }

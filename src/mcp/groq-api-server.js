@@ -139,9 +139,13 @@ class GroqAPIServer {
     this.app.post('/groq/chat', async (req, res) => {
       // Verificar límite de requests concurrentes
       if (this.currentRequests >= this.maxConcurrentRequests) {
-        return res.status(429).json({ 
-          error: 'Demasiadas requests concurrentes. Intenta de nuevo en un momento.' 
+        const { APIError } = require('../utils/api-error');
+        const error = APIError.rateLimitExceeded(null, {
+          reason: 'concurrent_requests_limit',
+          currentRequests: this.currentRequests,
+          maxConcurrentRequests: this.maxConcurrentRequests
         });
+        return res.status(error.statusCode).json(error.toJSON());
       }
       
       this.currentRequests++;
@@ -151,7 +155,13 @@ class GroqAPIServer {
       
       if (!model || !messages) {
         this.currentRequests--;
-        return res.status(400).json({ error: 'model y messages son requeridos' });
+        const { APIError } = require('../utils/api-error');
+        const error = APIError.fromHTTPStatus(
+          400,
+          'model y messages son requeridos',
+          { missing: !model ? ['model'] : ['messages'] }
+        );
+        return res.status(error.statusCode).json(error.toJSON());
       }
       
       // Verificar cache primero
@@ -261,16 +271,24 @@ class GroqAPIServer {
           this.rotateKey();
           attempts++;
           
-          // Si todas las keys fallaron, retornar error
+          // Si todas las keys fallaron, retornar error estandarizado
           if (attempts >= maxAttempts) {
             this.stats.failedRequests++;
             this.stats.errors++;
             this.currentRequests--;
-            return res.status(500).json({
-              success: false,
-              error: `Error con Groq API: ${error.message}. Todas las keys fueron intentadas.`,
-              attempts
-            });
+            
+            const { APIError } = require('../utils/api-error');
+            const errorInfo = error.response 
+              ? { statusCode: error.response.status, message: error.message }
+              : { statusCode: 500, message: error.message };
+            
+            const apiError = APIError.fromHTTPStatus(
+              errorInfo.statusCode,
+              `Error con Groq API: ${errorInfo.message}. Todas las keys fueron intentadas.`,
+              { attempts, maxAttempts }
+            );
+            
+            return res.status(apiError.statusCode).json(apiError.toJSON());
           }
         }
       }

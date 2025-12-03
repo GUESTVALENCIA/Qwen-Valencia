@@ -13,6 +13,9 @@ const axios = require('axios');
 const path = require('path');
 const fs = require('fs').promises;
 const APIKeyCleaner = require('../utils/api-key-cleaner');
+const { APIError, isRetryableError, extractErrorInfo } = require('../utils/api-error');
+const { circuitBreakerManager } = require('../utils/circuit-breaker');
+const { retry } = require('../utils/retry');
 
 class QwenExecutor {
   constructor(config = {}) {
@@ -340,55 +343,158 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
   }
 
   /**
+   * Detecta si un error de Groq requiere fallback a Ollama
+   */
+  shouldFallbackToOllama(error) {
+    if (!error) return false;
+    
+    // Errores 401/429 siempre requieren fallback si Ollama está disponible
+    if (error.response) {
+      const status = error.response.status;
+      if (status === 401 || status === 429) {
+        return true;
+      }
+    }
+    
+    // Errores de conexión o timeout también requieren fallback
+    if (error.code === 'ECONNREFUSED' || 
+        error.code === 'ETIMEDOUT' || 
+        error.message?.includes('timeout')) {
+      return true;
+    }
+    
+    return false;
+  }
+
+  /**
    * Ejecuta una petición a Qwen (auto-detecta Groq/Ollama)
    * Optimizado para respuestas rápidas cuando useAPI está activado
    * Qwen puede trabajar LOCAL (Ollama) y ONLINE (Groq API)
+   * Implementa fallback inteligente con circuit breaker
    */
   async execute(text, attachments = [], model = null) {
+    const groqBreaker = circuitBreakerManager.getBreaker('groq-qwen', {
+      failureThreshold: 3,
+      timeout: 60000
+    });
+    
+    const ollamaBreaker = circuitBreakerManager.getBreaker('ollama-qwen', {
+      failureThreshold: 3,
+      timeout: 30000
+    });
+    
+    let groqError = null;
+    let ollamaError = null;
+    
     try {
-      // Si modo es 'groq', usar Groq directamente (más rápido)
-      if (this.config.mode === 'groq') {
-        if (!this.config.groqApiKey) {
-          throw new Error('GROQ_API_KEY no configurada. Configúrala en .env.pro');
-        }
-        try {
-          const startTime = Date.now();
-          const response = await this.callGroq(text, attachments, model);
-          const duration = Date.now() - startTime;
-          console.log(`⚡ Qwen via Groq respondió en ${duration}ms`);
-          return response;
-        } catch (error) {
-          console.warn('⚠️ Error con Groq:', error.message);
-          throw new Error(`Error con Groq API: ${error.message}. Verifica tu GROQ_API_KEY en qwen-valencia.env`);
-        }
-      }
-      
-      // Si modo es 'auto' y hay API key, intentar Groq primero (más rápido)
-      if (this.config.mode === 'auto' && this.config.groqApiKey) {
-        try {
-          const startTime = Date.now();
-          const response = await this.callGroq(text, attachments, model);
-          const duration = Date.now() - startTime;
-          console.log(`⚡ Qwen via Groq respondió en ${duration}ms`);
-          return response;
-        } catch (error) {
-          console.warn('⚠️ Error con Groq, intentando Ollama...', error.message);
-          // Continuar con Ollama como fallback
+      // Si modo es 'groq' o 'auto' con API key, intentar Groq primero
+      if ((this.config.mode === 'groq' || this.config.mode === 'auto') && this.config.groqApiKey) {
+        if (!groqBreaker.isAvailable()) {
+          console.warn('⚠️ Circuit breaker Groq está OPEN, saltando a Ollama...');
+        } else {
+          try {
+            const startTime = Date.now();
+            const response = await groqBreaker.execute(
+              () => retry(
+                () => this.callGroq(text, attachments, model),
+                {
+                  maxRetries: 2,
+                  onRetry: (error, attempt, delay) => {
+                    console.log(`🔄 Reintento Groq ${attempt} en ${delay}ms...`);
+                  }
+                }
+              )
+            );
+            const duration = Date.now() - startTime;
+            console.log(`⚡ Qwen via Groq respondió en ${duration}ms`);
+            return response;
+          } catch (error) {
+            groqError = error;
+            const errorInfo = extractErrorInfo(error);
+            
+            // Si es error 401/429, intentar fallback a Ollama
+            if (this.shouldFallbackToOllama(error) && this.config.ollamaBaseUrl) {
+              console.warn(`⚠️ Error con Groq (${errorInfo.statusCode}), intentando fallback a Ollama...`);
+            } else {
+              // Si no es retryable o no hay Ollama, lanzar error
+              if (this.config.mode === 'groq') {
+                throw APIError.fromHTTPStatus(
+                  errorInfo.statusCode,
+                  `Error con Groq API: ${errorInfo.message}. Verifica tu GROQ_API_KEY en qwen-valencia.env`,
+                  errorInfo.details
+                );
+              }
+            }
+          }
         }
       }
 
-      // Usar Ollama (local) vía servidor MCP dedicado
-      try {
-        const startTime = Date.now();
-        const response = await this.callOllama(text, attachments, null, model);
-        const duration = Date.now() - startTime;
-        console.log(`🔄 Qwen via Ollama respondió en ${duration}ms`);
-        return response;
-      } catch (error) {
-        throw new Error(`Error con Ollama: ${error.message}. Asegúrate de que Ollama esté corriendo y el modelo ${this.config.ollamaModel} esté instalado.`);
+      // Fallback a Ollama si Groq falló o no está disponible
+      if (this.config.ollamaBaseUrl) {
+        if (!ollamaBreaker.isAvailable()) {
+          console.warn('⚠️ Circuit breaker Ollama está OPEN');
+          throw APIError.ollamaNotAvailable({ circuitBreakerOpen: true });
+        }
+        
+        try {
+          const startTime = Date.now();
+          const response = await ollamaBreaker.execute(
+            () => retry(
+              () => this.callOllama(text, attachments, null, model),
+              {
+                maxRetries: 2,
+                onRetry: (error, attempt, delay) => {
+                  console.log(`🔄 Reintento Ollama ${attempt} en ${delay}ms...`);
+                }
+              }
+            )
+          );
+          const duration = Date.now() - startTime;
+          console.log(`🔄 Qwen via Ollama respondió en ${duration}ms`);
+          return response;
+        } catch (error) {
+          ollamaError = error;
+          const errorInfo = extractErrorInfo(error);
+          
+          // Si ambos fallaron, lanzar error con información de ambos
+          if (groqError) {
+            throw APIError.allProvidersFailed(
+              [groqError, error],
+              {
+                groqError: extractErrorInfo(groqError),
+                ollamaError: errorInfo
+              }
+            );
+          }
+          
+          throw APIError.ollamaNotAvailable(errorInfo.details);
+        }
+      } else if (groqError) {
+        // Si no hay Ollama configurado y Groq falló, lanzar error
+        const errorInfo = extractErrorInfo(groqError);
+        throw APIError.fromHTTPStatus(
+          errorInfo.statusCode,
+          `Error con Groq API: ${errorInfo.message}. Verifica tu GROQ_API_KEY en qwen-valencia.env`,
+          errorInfo.details
+        );
+      } else {
+        throw APIError.fromHTTPStatus(
+          400,
+          'No hay proveedores configurados. Configura GROQ_API_KEY o OLLAMA_BASE_URL'
+        );
       }
     } catch (error) {
-      throw new Error(`Error ejecutando Qwen: ${error.message}`);
+      // Si ya es APIError, re-lanzarlo
+      if (error instanceof APIError) {
+        throw error;
+      }
+      
+      // Convertir a APIError
+      throw APIError.fromHTTPStatus(
+        500,
+        `Error ejecutando Qwen: ${error.message}`,
+        { originalError: error.message }
+      );
     }
   }
 
