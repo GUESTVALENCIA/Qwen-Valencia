@@ -958,7 +958,7 @@ ipcMain.handle('transcribe-audio', validateIPC('transcribe-audio', async (event,
       error: error.message
     };
   }
-});
+}));
 
 /**
  * Handler para transcribir audio con DeepGram
@@ -1035,7 +1035,7 @@ ipcMain.handle('deepgram-start-live', validateIPC('deepgram-start-live', async (
       error: error.message
     };
   }
-});
+}));
 
 /**
  * Handler para detener DeepGram Live Transcription
