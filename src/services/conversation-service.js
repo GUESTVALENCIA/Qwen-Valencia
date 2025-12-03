@@ -11,6 +11,7 @@
 
 const DeepgramService = require('./deepgram-service');
 const CartesiaService = require('./cartesia-service');
+const { LoggerFactory } = require('../utils/logger');
 
 class ConversationService {
   constructor(modelRouter) {
@@ -18,6 +19,7 @@ class ConversationService {
       throw new Error('ConversationService requiere modelRouter');
     }
 
+    this.logger = LoggerFactory.create({ service: 'conversation-service' });
     this.deepgram = new DeepgramService();
     this.cartesia = new CartesiaService();
     this.modelRouter = modelRouter;
@@ -48,7 +50,7 @@ class ConversationService {
     this.onError = null;
     this.onAudioChunk = null; // Para visualizador de audio
 
-    console.log('✅ Conversation Service inicializado');
+    this.logger.info('Conversation Service inicializado');
   }
 
   /**
@@ -92,7 +94,7 @@ class ConversationService {
         sessionId: this.sessionId
       };
     } catch (error) {
-      console.error('Error iniciando conversación:', error);
+      this.logger.error('Error iniciando conversación', { error: error.message, stack: error.stack });
       this._emitError(error);
       return {
         success: false,
@@ -116,7 +118,7 @@ class ConversationService {
         this._emitSessionState();
       }
     } catch (error) {
-      console.error('Error iniciando DeepGram Live:', error);
+      this.logger.error('Error iniciando DeepGram Live', { error: error.message, stack: error.stack });
       this._emitError(error);
     }
   }
@@ -188,7 +190,7 @@ class ConversationService {
         throw new Error(result.error || 'Error generando respuesta');
       }
     } catch (error) {
-      console.error('Error procesando transcripción:', error);
+      this.logger.error('Error procesando transcripción', { error: error.message, stack: error.stack });
       this._emitError(error);
       await this._speakResponse('Disculpa, he tenido un problema técnico. ¿Puedes repetir?');
     } finally {
@@ -233,7 +235,7 @@ class ConversationService {
         });
       }
     } catch (error) {
-      console.error('Error hablando respuesta:', error);
+      this.logger.error('Error hablando respuesta', { error: error.message, stack: error.stack });
       this._emitError(error);
     } finally {
       this.isSpeaking = false;
@@ -252,7 +254,7 @@ class ConversationService {
       this.bargeInInProgress = true;
       this.lastBargeInAt = Date.now();
 
-      console.log('🛑 Barge-in detectado:', transcript);
+      this.logger.info('Barge-in detectado', { transcript });
 
       // Detener TTS
       this.cartesia.stopSpeech();
@@ -276,7 +278,7 @@ class ConversationService {
    * Manejar errores
    */
   handleError(error) {
-    console.error('Error en Conversation Service:', error);
+    this.logger.error('Error en Conversation Service', { error: error.message, stack: error.stack });
     this._emitError(error);
   }
 

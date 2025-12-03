@@ -5,22 +5,23 @@
 const axios = require('axios');
 const path = require('path');
 const variablesLoader = require('../utils/variables-loader');
+const { LoggerFactory } = require('../utils/logger');
 
 // Cargar variables al inicializar
 variablesLoader.load();
 
 class CartesiaService {
   constructor() {
+    this.logger = LoggerFactory.create({ service: 'cartesia-service' });
     this.apiKey = variablesLoader.get('CARTESIA_API_KEY') || process.env.CARTESIA_API_KEY;
     this.baseUrl = process.env.CARTESIA_BASE_URL || 'https://api.cartesia.ai';
     this.apiVersion = process.env.CARTESIA_API_VERSION || '2024-11-13';
     this.voiceId = variablesLoader.get('CARTESIA_VOICE_ID') || process.env.CARTESIA_VOICE_ID || 'a0e99841-438c-4a64-b679-ae501e7d6091';
     
     if (this.apiKey) {
-      console.log('✅ Cartesia TTS Service inicializado');
-      console.log(`🔊 Voice ID: ${this.voiceId}`);
+      this.logger.info('Cartesia TTS Service inicializado', { voiceId: this.voiceId });
     } else {
-      console.warn('⚠️ Cartesia API Key no encontrada');
+      this.logger.warn('Cartesia API Key no encontrada');
     }
   }
 
@@ -75,7 +76,7 @@ class CartesiaService {
         sampleRate: 22050
       };
     } catch (error) {
-      console.error('Error en Cartesia TTS:', error);
+      this.logger.error('Error en Cartesia TTS', { error: error.message, stack: error.stack });
       return {
         success: false,
         error: error.message || 'Error desconocido'
@@ -129,7 +130,7 @@ class CartesiaService {
       });
 
       response.data.on('end', () => {
-        console.log('Stream de audio completado');
+        this.logger.debug('Stream de audio completado');
       });
 
       return {
@@ -137,7 +138,7 @@ class CartesiaService {
         message: 'Streaming iniciado'
       };
     } catch (error) {
-      console.error('Error en streaming de audio:', error);
+      this.logger.error('Error en streaming de audio', { error: error.message, stack: error.stack });
       return {
         success: false,
         error: error.message
@@ -151,7 +152,7 @@ class CartesiaService {
   stopSpeech() {
     // Cartesia no tiene un método directo para detener, pero podemos cancelar el stream
     // Esto se manejará en el conversation-service
-    console.log('🛑 Deteniendo síntesis de voz (barge-in)');
+    this.logger.info('Deteniendo síntesis de voz (barge-in)');
   }
 }
 

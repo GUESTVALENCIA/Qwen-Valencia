@@ -7,19 +7,21 @@
 const axios = require('axios');
 const path = require('path');
 const variablesLoader = require('../utils/variables-loader');
+const { LoggerFactory } = require('../utils/logger');
 
 // Cargar variables al inicializar
 variablesLoader.load();
 
 class HeyGenTokenService {
   constructor() {
+    this.logger = LoggerFactory.create({ service: 'heygen-token-service' });
     this.apiKey = variablesLoader.get('HEYGEN_API_KEY') || process.env.HEYGEN_API_KEY;
     this.baseUrl = process.env.HEYGEN_BASE_URL || 'https://api.heygen.com';
     
     if (this.apiKey) {
-      console.log('✅ HeyGen Token Service inicializado');
+      this.logger.info('HeyGen Token Service inicializado');
     } else {
-      console.warn('⚠️ HeyGen API Key no encontrada');
+      this.logger.warn('HeyGen API Key no encontrada');
     }
   }
 
@@ -55,7 +57,10 @@ class HeyGenTokenService {
 
       throw new Error('Token no recibido en la respuesta');
     } catch (error) {
-      console.error('Error obteniendo token de HeyGen:', error.response?.data || error.message);
+      this.logger.error('Error obteniendo token de HeyGen', { 
+        error: error.response?.data || error.message,
+        status: error.response?.status 
+      });
       return {
         success: false,
         error: error.response?.data?.message || error.message || 'Error desconocido'

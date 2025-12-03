@@ -8,12 +8,14 @@
 const { createClient, LiveTranscriptionEvents } = require('@deepgram/sdk');
 const path = require('path');
 const variablesLoader = require('../utils/variables-loader');
+const { LoggerFactory } = require('../utils/logger');
 
 // Cargar variables al inicializar
 variablesLoader.load();
 
 class DeepgramService {
   constructor() {
+    this.logger = LoggerFactory.create({ service: 'deepgram-service' });
     this.apiKey = variablesLoader.get('DEEPGRAM_API_KEY') || process.env.DEEPGRAM_API_KEY;
     this.client = null;
     this.liveConnection = null;
@@ -27,13 +29,13 @@ class DeepgramService {
         const cleanedKey = this.apiKey.trim().replace(/['"]/g, '').replace(/\s+/g, '');
         this.client = createClient(cleanedKey);
         this.enabled = true;
-        console.log('✅ Deepgram STT Service inicializado');
+        this.logger.info('Deepgram STT Service inicializado');
       } catch (error) {
-        console.warn('⚠️ Error inicializando Deepgram client (deshabilitado):', error.message);
+        this.logger.warn('Error inicializando Deepgram client (deshabilitado)', { error: error.message });
         this.enabled = false;
       }
     } else {
-      console.warn('⚠️ Deepgram API Key no encontrada - Servicio deshabilitado');
+      this.logger.warn('Deepgram API Key no encontrada - Servicio deshabilitado');
       this.enabled = false;
     }
   }
@@ -67,7 +69,7 @@ class DeepgramService {
         confidence: result.results.channels[0].alternatives[0].confidence
       };
     } catch (error) {
-      console.error('Error transcribiendo archivo:', error);
+      this.logger.error('Error transcribiendo archivo', { error: error.message, stack: error.stack });
       return {
         success: false,
         error: error.message
@@ -107,7 +109,7 @@ class DeepgramService {
         confidence: result.results.channels[0].alternatives[0].confidence
       };
     } catch (error) {
-      console.error('Error transcribiendo buffer:', error);
+      this.logger.error('Error transcribiendo buffer', { error: error.message, stack: error.stack });
       return {
         success: false,
         error: error.message
@@ -143,13 +145,13 @@ class DeepgramService {
 
       // Evento: Conexión abierta
       this.liveConnection.on(LiveTranscriptionEvents.Open, () => {
-        console.log('✅ Conexión Deepgram Live abierta');
+        this.logger.info('Conexión Deepgram Live abierta');
         this.isConnected = true;
         if (typeof this.statusCallback === 'function') {
           try { 
             this.statusCallback({ connected: true }); 
           } catch (e) {
-            console.error('Error en statusCallback:', e);
+            this.logger.error('Error en statusCallback', { error: e.message });
           }
         }
       });
@@ -170,38 +172,38 @@ class DeepgramService {
 
       // Evento: Metadata
       this.liveConnection.on(LiveTranscriptionEvents.Metadata, (data) => {
-        console.log('Deepgram metadata:', data);
+        this.logger.debug('Deepgram metadata', { metadata: data });
       });
 
       // Evento: Error
       this.liveConnection.on(LiveTranscriptionEvents.Error, (error) => {
-        console.error('Error en Deepgram Live:', error);
+        this.logger.error('Error en Deepgram Live', { error: error.message || error });
         if (onError) onError(error);
         if (typeof this.statusCallback === 'function') {
           try { 
             this.statusCallback({ connected: false, error: error?.message || String(error) }); 
           } catch (e) {
-            console.error('Error en statusCallback:', e);
+            this.logger.error('Error en statusCallback', { error: e.message });
           }
         }
       });
 
       // Evento: Conexión cerrada
       this.liveConnection.on(LiveTranscriptionEvents.Close, () => {
-        console.log('🔌 Conexión Deepgram Live cerrada');
+        this.logger.info('Conexión Deepgram Live cerrada');
         this.isConnected = false;
         if (typeof this.statusCallback === 'function') {
           try { 
             this.statusCallback({ connected: false }); 
           } catch (e) {
-            console.error('Error en statusCallback:', e);
+            this.logger.error('Error en statusCallback', { error: e.message });
           }
         }
       });
 
       return { success: true };
     } catch (error) {
-      console.error('Error iniciando transcripción en vivo:', error);
+      this.logger.error('Error iniciando transcripción en vivo', { error: error.message, stack: error.stack });
       return {
         success: false,
         error: error.message
