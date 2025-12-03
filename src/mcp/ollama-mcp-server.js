@@ -296,7 +296,9 @@ class OllamaMCPServer extends EventEmitter {
       }
     });
     
-    // Chat con streaming (SSE)
+    // Chat con streaming (SSE) - con validación
+    this.app.post('/ollama/chat/stream',
+      this.validator.validate('/ollama/chat/stream', ValidatorMiddleware.commonSchemas.ollamaChatRequest),
     this.app.post('/ollama/stream/chat', async (req, res) => {
       // Verificar límite de requests concurrentes
       if (this.currentRequests >= this.maxConcurrentRequests) {
