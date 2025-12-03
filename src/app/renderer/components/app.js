@@ -806,17 +806,6 @@ function selectModel(modelId) {
 }
 
 /**
- * Lista explícita de IDs de modelos Qwen (robusta y mantenible)
- * Actualizada automáticamente desde MODELS para evitar falsos positivos
- */
-const QWEN_MODEL_IDS = Object.keys(MODELS).filter(id => {
-    if (id === 'auto') return false;
-    const model = MODELS[id];
-    // Verificar que el nombre contenga 'Qwen' y no sea DeepSeek
-    return model.name.includes('Qwen') && !model.name.includes('DeepSeek');
-});
-
-/**
  * Verificar si un modelo es Qwen usando lista explícita (robusta)
  * @param {string} modelId - ID del modelo
  * @returns {boolean} true si es un modelo Qwen
@@ -824,19 +813,15 @@ const QWEN_MODEL_IDS = Object.keys(MODELS).filter(id => {
 function isQwenModel(modelId) {
     if (!modelId) return false;
     
-    // Verificar en lista explícita de modelos Qwen (más robusto)
-    if (QWEN_MODEL_IDS.includes(modelId)) {
-        return true;
-    }
-    
-    // Fallback: verificar en MODELS si existe y es Qwen
+    // Verificar en MODELS si existe y es Qwen (más robusto y seguro)
     if (MODELS[modelId]) {
         const model = MODELS[modelId];
+        // Verificar que el nombre contenga 'Qwen' y no sea DeepSeek
         return model.name.includes('Qwen') && !model.name.includes('DeepSeek');
     }
     
     // No usar fallback con startsWith('qwen') para evitar falsos positivos
-    // Si el modelo no está en MODELS ni en QWEN_MODEL_IDS, no es Qwen
+    // Si el modelo no está en MODELS, no es Qwen
     return false;
 }
 
