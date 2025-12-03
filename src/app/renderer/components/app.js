@@ -836,9 +836,11 @@ async function sendMessage() {
     const hasImage = !!state.attachedImage;
     // Nota: qwen2.5vl:3b fue eliminado, usar Qwen estándar para imágenes
     if (hasImage && state.model !== 'auto' && !state.model.includes('qwen')) {
-        // Si hay imagen y no es Qwen, sugerir usar Qwen (local o API según useAPI)
-        const suggestedModel = state.useAPI ? 'qwen-2.5-72b-instruct' : 'qwen2.5:7b-instruct';
-        console.log(`🖼️ Imagen detectada: Usando modelo Qwen para procesamiento de imágenes`);
+        // Si hay imagen y no es Qwen, cambiar a Qwen (local o API según useAPI)
+        const previousModel = state.model;
+        state.model = state.useAPI ? 'qwen-2.5-72b-instruct' : 'qwen2.5:7b-instruct';
+        updateModelButtonDisplay(MODELS[state.model]?.compact || 'Qwen');
+        console.log(`🖼️ Imagen detectada: Cambiando de ${previousModel} a ${state.model} para procesamiento de imágenes`);
     }
     
     let modelsToUse = [];
