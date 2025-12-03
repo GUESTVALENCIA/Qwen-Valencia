@@ -36,7 +36,10 @@ class DeepSeekExecutor {
           length: cleaned.cleaned.length,
           preview: cleaned.cleaned.substring(0, 20)
         });
-        throw new Error(`GROQ_API_KEY inválida: ${cleaned.error}. Verifica tu GROQ_API_KEY en qwen-valencia.env`);
+        throw APIError.invalidAPIKey({ 
+          reason: cleaned.error,
+          source: 'deepseek-executor'
+        });
       }
     }
     
@@ -163,7 +166,11 @@ RECUERDA: ERES ESPECIALIZADO EN CÓDIGO. GENERAS Y EJECUTAS REALMENTE.`;
         if (response.data.success) {
           return response.data.content;
         } else {
-          throw new Error(response.data.error || 'Error desconocido');
+          throw APIError.fromHTTPStatus(
+            response.status || 500,
+            response.data.error || 'Error desconocido',
+            { source: 'groq-api-server', response: response.data }
+          );
         }
       } catch (serverError) {
         // Si el servidor no está disponible o devuelve error 401, intentar llamada directa
@@ -173,21 +180,30 @@ RECUERDA: ERES ESPECIALIZADO EN CÓDIGO. GENERAS Y EJECUTAS REALMENTE.`;
           this.logger.warn('Servidor Groq no disponible o error 401, intentando llamada directa');
           
           if (!this.config.groqApiKey) {
-            throw new Error('GROQ_API_KEY no configurada. Configúrala en qwen-valencia.env');
+            throw APIError.invalidAPIKey({ 
+              reason: 'API key no configurada',
+              source: 'deepseek-executor-direct'
+            });
           }
           
           // Limpiar y validar API key usando APIKeyCleaner
           const cleaned = APIKeyCleaner.cleanAndValidateGroq(this.config.groqApiKey || '');
           
           if (!cleaned.valid || !cleaned.cleaned) {
-            throw new Error(`GROQ_API_KEY inválida: ${cleaned.error || 'API key vacía o mal formateada'}`);
+            throw APIError.invalidAPIKey({ 
+              reason: cleaned.error || 'API key vacía o mal formateada',
+              source: 'deepseek-executor-direct'
+            });
           }
           
           const cleanApiKey = cleaned.cleaned;
           
           // Validar que no tenga caracteres inválidos para headers
           if (/[\r\n\t\x00-\x1F\x7F-\x9F]/.test(cleanApiKey)) {
-            throw new Error('GROQ_API_KEY contiene caracteres inválidos para headers HTTP');
+            throw APIError.invalidAPIKey({ 
+              reason: 'Caracteres inválidos en API key',
+              source: 'deepseek-executor-direct'
+            });
           }
           
           const directResponse = await axios.post(
@@ -213,7 +229,12 @@ RECUERDA: ERES ESPECIALIZADO EN CÓDIGO. GENERAS Y EJECUTAS REALMENTE.`;
         throw serverError;
       }
     } catch (error) {
-      throw new Error(`Error con Groq API: ${error.message}`);
+      const errorInfo = extractErrorInfo(error);
+      throw APIError.fromHTTPStatus(
+        errorInfo.statusCode,
+        errorInfo.message,
+        { ...errorInfo.details, source: 'deepseek-executor', originalError: error.message }
+      );
     }
   }
 
@@ -284,7 +305,11 @@ RECUERDA: ERES ESPECIALIZADO EN CÓDIGO. GENERAS Y EJECUTAS REALMENTE.`;
         if (response.data.success) {
           return response.data.content;
         } else {
-          throw new Error(response.data.error || 'Error desconocido');
+          throw APIError.fromHTTPStatus(
+            response.status || 500,
+            response.data.error || 'Error desconocido',
+            { source: 'groq-api-server', response: response.data }
+          );
         }
       } catch (serverError) {
         // Fallback a llamada directa si servidor no disponible
