@@ -1,0 +1,612 @@
+// ═══════════════════════════════════════════════════════════════════
+// MODEL SELECTOR - Qwen-Valencia
+// Sistema de selección de modelos adaptado para Qwen/DeepSeek
+// ═══════════════════════════════════════════════════════════════════
+
+class ModelSelector {
+    constructor() {
+        this.menu = null;
+        this.button = null;
+        this.isOpen = false;
+        this.currentModel = 'qwen2.5:7b-instruct';
+        this.selectedModels = [];
+        this.multiModel = false;
+        this.autoMode = false;
+        
+        this.init();
+    }
+    
+    init() {
+        this.menu = document.getElementById('modelMenu');
+        this.button = document.querySelector('.model-btn') || document.querySelector('#modelDropdown');
+        
+        if (!this.menu || !this.button) {
+            console.warn('⚠️ Model selector elements not found, reintentando...', {
+                menu: !!this.menu,
+                button: !!this.button
+            });
+            setTimeout(() => this.init(), 100);
+            return;
+        }
+        
+        // Cargar estado guardado
+        const savedModel = localStorage.getItem('selectedModel') || 'qwen2.5:7b-instruct';
+        this.currentModel = savedModel;
+        
+        // Cargar modelos seleccionados
+        const savedModels = localStorage.getItem('selectedModels');
+        if (savedModels) {
+            try {
+                this.selectedModels = JSON.parse(savedModels);
+            } catch (e) {
+                this.selectedModels = [];
+            }
+        }
+        
+        // Cargar multi-model y auto-mode
+        this.multiModel = localStorage.getItem('multiModel') === 'true';
+        this.autoMode = localStorage.getItem('autoMode') !== 'false';
+        
+        this.setupEventListeners();
+        this.renderModelList();
+        this.updateButtonDisplay();
+        
+        console.log('✅ ModelSelector inicializado correctamente');
+    }
+    
+    setupEventListeners() {
+        // Cerrar menú al hacer click fuera
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.model-dropdown') && !e.target.closest('.model-tooltip')) {
+                this.closeMenu();
+            }
+        });
+        
+        // Buscador de modelos
+        const searchInput = document.getElementById('modelSearch');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                this.filterModels(e.target.value);
+            });
+        }
+        
+        // Toggles
+        const autoToggle = document.getElementById('autoToggle');
+        if (autoToggle) {
+            autoToggle.addEventListener('change', (e) => {
+                this.toggleAutoMode(e.target.checked);
+            });
+        }
+        
+        const multiModelToggle = document.getElementById('multiModelToggle');
+        if (multiModelToggle) {
+            multiModelToggle.addEventListener('change', (e) => {
+                this.toggleMultiModel(e.target.checked);
+            });
+        }
+        
+        const maxToggle = document.getElementById('maxToggle');
+        if (maxToggle) {
+            maxToggle.addEventListener('change', (e) => {
+                this.toggleMaxMode(e.target.checked);
+            });
+        }
+    }
+    
+    toggleMenu() {
+        if (this.isOpen) {
+            this.closeMenu();
+        } else {
+            this.openMenu();
+        }
+    }
+    
+    openMenu() {
+        if (!this.menu || !this.button) {
+            console.warn('⚠️ No se puede abrir el menú: elementos no encontrados');
+            return;
+        }
+        
+        const rect = this.button.getBoundingClientRect();
+        const menuHeight = 600;
+        const menuWidth = 360;
+        
+        let left = rect.left;
+        let bottom = window.innerHeight - rect.top + 8;
+        
+        if (left < 16) {
+            left = 16;
+        }
+        
+        if (left + menuWidth > window.innerWidth - 16) {
+            left = window.innerWidth - menuWidth - 16;
+        }
+        
+        if (bottom + menuHeight > window.innerHeight - 16) {
+            bottom = menuHeight + 16;
+        }
+        
+        this.menu.style.cssText = `
+            position: fixed !important;
+            left: ${left}px !important;
+            bottom: ${bottom}px !important;
+            top: auto !important;
+            right: auto !important;
+            width: ${menuWidth}px !important;
+            z-index: 99999999 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+            pointer-events: auto !important;
+        `;
+        
+        this.menu.classList.add('show');
+        this.isOpen = true;
+        
+        // Focus en buscador
+        const searchInput = document.getElementById('modelSearch');
+        if (searchInput) {
+            setTimeout(() => searchInput.focus(), 100);
+        }
+    }
+    
+    closeMenu() {
+        if (this.menu) {
+            this.menu.classList.remove('show');
+            this.menu.style.cssText = '';
+        }
+        this.isOpen = false;
+        this.hideTooltip();
+    }
+    
+    renderModelList() {
+        const container = document.getElementById('modelListScroll');
+        if (!container) return;
+        
+        // Usar MODELS de app.js (objeto plano)
+        const MODELS_REF = window.MODELS || (typeof MODELS !== 'undefined' ? MODELS : {});
+        
+        // Filtrar solo modelos Qwen/DeepSeek (excluir 'auto')
+        const modelKeys = Object.keys(MODELS_REF).filter(k => k !== 'auto');
+        
+        let html = '';
+        
+        // Agrupar por proveedor para mejor organización
+        const ollamaModels = [];
+        const groqModels = [];
+        
+        modelKeys.forEach(modelId => {
+            const model = MODELS_REF[modelId];
+            if (!model) return;
+            
+            const isActive = this.currentModel === modelId;
+            const isSelected = this.selectedModels.includes(modelId);
+            
+            const modelHtml = `
+                <div class="model-item-compact ${isActive ? 'active' : ''}" 
+                     data-model="${modelId}" 
+                     data-provider="${model.provider}"
+                     data-tokens="${model.tokens || 'N/A'}"
+                     data-category="${model.category || 'General'}"
+                     data-capabilities="${JSON.stringify(model.capabilities || [])}"
+                     data-description="${(model.description || '').replace(/"/g, '&quot;')}"
+                     onmouseenter="modelSelector.showTooltip(event, this)"
+                     onmouseleave="modelSelector.hideTooltip()"
+                     onclick="modelSelector.selectModel('${modelId}', event)">
+                    <input type="checkbox" 
+                           class="model-checkbox" 
+                           ${isSelected || isActive ? 'checked' : ''}
+                           ${this.multiModel ? '' : 'style="display:none;"'}
+                           onclick="event.stopPropagation(); modelSelector.toggleSelection('${modelId}', this)">
+                    <span class="model-name-compact">${model.compact || model.name}</span>
+                    <span class="model-provider-badge">${model.provider}</span>
+                </div>
+            `;
+            
+            if (model.provider === 'Ollama') {
+                ollamaModels.push({ id: modelId, html: modelHtml });
+            } else if (model.provider === 'Groq') {
+                groqModels.push({ id: modelId, html: modelHtml });
+            }
+        });
+        
+        // Renderizar con separadores por proveedor
+        if (ollamaModels.length > 0) {
+            html += '<div class="model-group-header">Ollama Local</div>';
+            ollamaModels.forEach(m => html += m.html);
+        }
+        
+        if (groqModels.length > 0) {
+            if (ollamaModels.length > 0) {
+                html += '<div class="model-group-divider"></div>';
+            }
+            html += '<div class="model-group-header">Groq API</div>';
+            groqModels.forEach(m => html += m.html);
+        }
+        
+        container.innerHTML = html;
+    }
+    
+    selectModel(modelId, event) {
+        if (event) {
+            event.stopPropagation();
+        }
+        
+        if (!modelId) return;
+        
+        // Usar función global selectModel si existe (de app.js)
+        if (window.selectModel) {
+            window.selectModel(modelId);
+        } else {
+            this.currentModel = modelId;
+            localStorage.setItem('selectedModel', modelId);
+            
+            // Actualizar UI
+            document.querySelectorAll('.model-item-compact').forEach(item => {
+                item.classList.remove('active');
+            });
+            const selectedItem = document.querySelector(`[data-model="${modelId}"]`);
+            if (selectedItem) {
+                selectedItem.classList.add('active');
+            }
+            
+            this.updateButtonDisplay();
+        }
+        
+        this.closeMenu();
+        
+        console.log(`✅ Modelo seleccionado: ${modelId}`);
+    }
+    
+    toggleSelection(modelId, checkbox) {
+        if (checkbox.checked) {
+            if (!this.selectedModels.includes(modelId)) {
+                this.selectedModels.push(modelId);
+            }
+            
+            if (!this.multiModel) {
+                // Modo single: deseleccionar otros
+                this.selectedModels = [modelId];
+                document.querySelectorAll('.model-checkbox').forEach(cb => {
+                    if (cb !== checkbox) cb.checked = false;
+                });
+                // Seleccionar este modelo
+                this.selectModel(modelId);
+            }
+        } else {
+            this.selectedModels = this.selectedModels.filter(id => id !== modelId);
+        }
+        
+        // Guardar modelos seleccionados
+        try {
+            localStorage.setItem('selectedModels', JSON.stringify(this.selectedModels));
+        } catch (e) {
+            console.error('Error guardando modelos seleccionados:', e);
+        }
+        
+        // Actualizar estado global si existe
+        if (window.state) {
+            window.state.selectedModels = this.selectedModels;
+        }
+    }
+    
+    toggleAutoMode(enabled) {
+        this.autoMode = enabled;
+        localStorage.setItem('autoMode', enabled);
+        
+        if (enabled) {
+            this.currentModel = 'auto';
+            this.updateButtonDisplay();
+            
+            // Llamar función global si existe
+            if (window.toggleAutoMode) {
+                window.toggleAutoMode(enabled);
+            }
+        }
+    }
+    
+    toggleMaxMode(enabled) {
+        localStorage.setItem('maxMode', enabled);
+        
+        // Llamar función global si existe
+        if (window.toggleMaxMode) {
+            window.toggleMaxMode(enabled);
+        }
+    }
+    
+    toggleMultiModel(enabled) {
+        this.multiModel = enabled;
+        localStorage.setItem('multiModel', enabled);
+        
+        // Mostrar/ocultar checkboxes
+        document.querySelectorAll('.model-checkbox').forEach(cb => {
+            cb.style.display = enabled ? 'block' : 'none';
+        });
+        
+        if (!enabled && this.selectedModels.length > 0) {
+            const first = this.selectedModels[0];
+            this.currentModel = first;
+            this.selectedModels = [first];
+            this.updateButtonDisplay();
+            this.renderModelList();
+        }
+        
+        // Actualizar estado global si existe
+        if (window.state) {
+            window.state.multiModel = enabled;
+            window.state.selectedModels = this.selectedModels;
+        }
+    }
+    
+    filterModels(term) {
+        const items = document.querySelectorAll('.model-item-compact');
+        const searchTerm = term.toLowerCase().trim();
+        
+        if (!searchTerm) {
+            items.forEach(item => {
+                item.style.display = 'flex';
+            });
+            return;
+        }
+        
+        items.forEach(item => {
+            const modelId = item.dataset.model || '';
+            const provider = item.dataset.provider || '';
+            const category = item.dataset.category || '';
+            const name = item.querySelector('.model-name-compact')?.textContent || '';
+            
+            const searchText = `${modelId} ${provider} ${category} ${name}`.toLowerCase();
+            item.style.display = searchText.includes(searchTerm) ? 'flex' : 'none';
+        });
+        
+        // Ocultar headers de grupo si no hay modelos visibles en ese grupo
+        const headers = document.querySelectorAll('.model-group-header');
+        headers.forEach(header => {
+            const group = header.nextElementSibling;
+            let hasVisible = false;
+            let current = group;
+            while (current && !current.classList.contains('model-group-divider') && !current.classList.contains('model-group-header')) {
+                if (current.classList.contains('model-item-compact') && current.style.display !== 'none') {
+                    hasVisible = true;
+                    break;
+                }
+                current = current.nextElementSibling;
+            }
+            header.style.display = hasVisible ? 'block' : 'none';
+        });
+    }
+    
+    updateButtonDisplay() {
+        const modelNameSpan = document.getElementById('modelName');
+        
+        if (modelNameSpan) {
+            const MODELS_REF = window.MODELS || (typeof MODELS !== 'undefined' ? MODELS : {});
+            
+            if (this.currentModel === 'auto' || this.autoMode) {
+                modelNameSpan.textContent = 'Auto';
+            } else {
+                const model = MODELS_REF[this.currentModel];
+                if (model) {
+                    modelNameSpan.textContent = model.compact || model.name;
+                } else {
+                    modelNameSpan.textContent = this.currentModel;
+                }
+            }
+        }
+        
+        // Actualizar botón principal
+        const modelButton = document.getElementById('modelDropdown');
+        if (modelButton) {
+            if (this.currentModel === 'auto' || this.autoMode) {
+                modelButton.classList.add('auto-mode');
+            } else {
+                modelButton.classList.remove('auto-mode');
+            }
+        }
+    }
+    
+    showTooltip(event, element) {
+        clearTimeout(this.tooltipTimeout);
+        
+        this.tooltipTimeout = setTimeout(() => {
+            const tooltip = document.getElementById('modelTooltip');
+            if (!tooltip || !element) return;
+            
+            const modelId = element.dataset.model || '';
+            const provider = element.dataset.provider || '';
+            const tokens = element.dataset.tokens || 'N/A';
+            const category = element.dataset.category || '';
+            const capabilities = JSON.parse(element.dataset.capabilities || '[]');
+            const description = element.dataset.description || '';
+            
+            const MODELS_REF = window.MODELS || (typeof MODELS !== 'undefined' ? MODELS : {});
+            const model = MODELS_REF[modelId];
+            const modelName = model?.name || modelId;
+            
+            // Actualizar contenido
+            const tooltipProvider = tooltip.querySelector('.tooltip-provider');
+            const tooltipName = tooltip.querySelector('.tooltip-name');
+            const tooltipTokens = tooltip.querySelector('.tooltip-tokens');
+            const tooltipCategory = tooltip.querySelector('.tooltip-category');
+            const tooltipCapabilities = tooltip.querySelector('.tooltip-capabilities');
+            const tooltipDescription = tooltip.querySelector('.tooltip-description');
+            
+            if (tooltipProvider) tooltipProvider.textContent = provider;
+            if (tooltipName) tooltipName.textContent = modelName;
+            if (tooltipTokens) {
+                const tokensText = tokens === 'N/A' || tokens === '-' || tokens === 'Ilimitado' 
+                    ? 'Contexto: Ilimitado' 
+                    : `Contexto: ${tokens} tokens`;
+                tooltipTokens.textContent = tokensText;
+            }
+            if (tooltipCategory) tooltipCategory.textContent = `Categoría: ${category || 'General'}`;
+            
+            if (tooltipCapabilities && capabilities.length > 0) {
+                tooltipCapabilities.innerHTML = `
+                    <strong>Capacidades:</strong>
+                    <ul>
+                        ${capabilities.map(cap => `<li>${cap}</li>`).join('')}
+                    </ul>
+                `;
+                tooltipCapabilities.style.display = 'block';
+            } else if (tooltipCapabilities) {
+                tooltipCapabilities.style.display = 'none';
+            }
+            
+            if (tooltipDescription) {
+                if (description) {
+                    tooltipDescription.textContent = description;
+                    tooltipDescription.style.display = 'block';
+                } else {
+                    tooltipDescription.style.display = 'none';
+                }
+            }
+            
+            // Posicionar tooltip
+            const rect = element.getBoundingClientRect();
+            const tooltipRect = tooltip.getBoundingClientRect();
+            
+            let left = rect.right + 12;
+            let top = rect.top;
+            
+            if (left + tooltipRect.width > window.innerWidth - 16) {
+                left = rect.left - tooltipRect.width - 12;
+            }
+            
+            if (top + tooltipRect.height > window.innerHeight - 16) {
+                top = window.innerHeight - tooltipRect.height - 16;
+            }
+            
+            if (top < 16) {
+                top = 16;
+            }
+            
+            tooltip.style.left = `${left}px`;
+            tooltip.style.top = `${top}px`;
+            tooltip.classList.add('show');
+        }, 300);
+    }
+    
+    hideTooltip() {
+        if (this.tooltipTimeout) {
+            clearTimeout(this.tooltipTimeout);
+            this.tooltipTimeout = null;
+        }
+        
+        const tooltip = document.getElementById('modelTooltip');
+        if (tooltip) {
+            tooltip.classList.remove('show');
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// INICIALIZACIÓN
+// ═══════════════════════════════════════════════════════════════════
+
+let modelSelector = null;
+let initAttempts = 0;
+const MAX_INIT_ATTEMPTS = 20;
+
+function initModelSelector() {
+    // Verificar que MODELS esté disponible (definido en app.js)
+    if (!window.MODELS || typeof window.MODELS !== 'object') {
+        initAttempts++;
+        if (initAttempts < MAX_INIT_ATTEMPTS) {
+            setTimeout(initModelSelector, 100);
+            return;
+        } else {
+            console.error('❌ MODELS no disponible después de múltiples intentos');
+            return;
+        }
+    }
+    
+    // Verificar que los elementos DOM existan
+    const menu = document.getElementById('modelMenu');
+    const button = document.querySelector('.model-btn') || document.querySelector('#modelDropdown');
+    
+    if (!menu || !button) {
+        initAttempts++;
+        if (initAttempts < MAX_INIT_ATTEMPTS) {
+            setTimeout(initModelSelector, 100);
+            return;
+        } else {
+            console.error('❌ Elementos DOM no encontrados después de múltiples intentos');
+            return;
+        }
+    }
+    
+    // Inicializar solo una vez
+    if (!modelSelector) {
+        try {
+            modelSelector = new ModelSelector();
+            window.modelSelector = modelSelector;
+            
+            // Exponer toggleModelMenu globalmente
+            window.toggleModelMenu = () => {
+                if (modelSelector) {
+                    modelSelector.toggleMenu();
+                } else {
+                    console.warn('⚠️ ModelSelector no inicializado aún');
+                }
+            };
+            
+            console.log('✅ ModelSelector inicializado correctamente');
+        } catch (error) {
+            console.error('❌ Error inicializando ModelSelector:', error);
+        }
+    }
+}
+
+// Inicializar cuando TODO esté listo
+(function() {
+    let tryInitTimeout = null;
+    let loadTimeout = null;
+    
+    const tryInit = () => {
+        if (tryInitTimeout) {
+            clearTimeout(tryInitTimeout);
+            tryInitTimeout = null;
+        }
+        
+        if (document.readyState === 'complete' && window.MODELS) {
+            initModelSelector();
+        } else if (document.readyState === 'interactive' || document.readyState === 'complete') {
+            tryInitTimeout = setTimeout(tryInit, 50);
+        }
+    };
+    
+    const cleanup = () => {
+        if (tryInitTimeout) {
+            clearTimeout(tryInitTimeout);
+            tryInitTimeout = null;
+        }
+        if (loadTimeout) {
+            clearTimeout(loadTimeout);
+            loadTimeout = null;
+        }
+    };
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            tryInitTimeout = setTimeout(tryInit, 150);
+        });
+    } else {
+        tryInitTimeout = setTimeout(tryInit, 150);
+    }
+    
+    window.addEventListener('load', () => {
+        loadTimeout = setTimeout(() => {
+            if (!modelSelector && window.MODELS) {
+                initModelSelector();
+            }
+            loadTimeout = null;
+        }, 100);
+    });
+    
+    window.cleanupModelSelectorInit = cleanup;
+})();
+
+console.log('✅ Qwen-Valencia model-selector.js cargado');
+

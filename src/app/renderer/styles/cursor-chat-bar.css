@@ -1,0 +1,548 @@
+/* ═══════════════════════════════════════════════════════════════════
+   BARRA ÚNICA ESTILO CURSOR - Diseño Profesional y Elegante
+   ═══════════════════════════════════════════════════════════════════ */
+
+.cursor-chat-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    background: linear-gradient(135deg, rgba(26, 35, 50, 0.95), rgba(33, 43, 59, 0.98));
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    border: 1.5px solid rgba(74, 158, 255, 0.2);
+    border-radius: var(--radius-xl);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4),
+                0 0 0 1px rgba(74, 158, 255, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    position: fixed;
+    bottom: 20px;
+    left: 240px;
+    right: 20px;
+    width: auto;
+    max-width: 1400px;
+    margin: 0 auto;
+    z-index: 10000;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cursor-chat-bar:hover {
+    border-color: rgba(74, 158, 255, 0.3);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5),
+                0 0 0 1px rgba(74, 158, 255, 0.15);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   BOTÓN AGENTE DESPLEGABLE
+   ═══════════════════════════════════════════════════════════════════ */
+
+.agent-dropdown {
+    position: relative;
+    flex-shrink: 0;
+    isolation: isolate;
+}
+
+.agent-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: linear-gradient(135deg, rgba(74, 158, 255, 0.15), rgba(74, 158, 255, 0.05));
+    border: 1.5px solid rgba(74, 158, 255, 0.3);
+    border-radius: var(--radius-lg);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.agent-btn:hover {
+    background: linear-gradient(135deg, rgba(74, 158, 255, 0.25), rgba(74, 158, 255, 0.15));
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(74, 158, 255, 0.3);
+}
+
+.agent-btn i {
+    font-size: 14px;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+}
+
+.agent-arrow {
+    font-size: 10px;
+    opacity: 0.7;
+    transition: transform 0.3s ease;
+}
+
+.agent-btn:hover .agent-arrow {
+    transform: translateY(2px);
+}
+
+.agent-menu {
+    position: fixed !important;
+    min-width: 140px;
+    background: linear-gradient(135deg, rgba(33, 43, 59, 0.98), rgba(26, 35, 50, 0.98)) !important;
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    border: 1.5px solid rgba(74, 158, 255, 0.3) !important;
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+    padding: 6px;
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    z-index: 99999999 !important;
+    overflow: hidden;
+    isolation: isolate;
+    transform: translateZ(0);
+    will-change: transform;
+}
+
+.agent-menu.show {
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    animation: menuSlideIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.agent-menu.show * {
+    pointer-events: auto !important;
+}
+
+.agent-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.agent-option:hover {
+    background: rgba(74, 158, 255, 0.15);
+    transform: translateX(4px);
+}
+
+.agent-option i {
+    font-size: 14px;
+    width: 16px;
+    text-align: center;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SELECTOR AUTO (AMPLIADO)
+   ═══════════════════════════════════════════════════════════════════ */
+
+.model-dropdown-auto {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.model-btn-auto {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: linear-gradient(135deg, rgba(74, 158, 255, 0.15), rgba(74, 158, 255, 0.05));
+    border: 1.5px solid rgba(74, 158, 255, 0.3);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.model-btn-auto:hover {
+    background: linear-gradient(135deg, rgba(74, 158, 255, 0.25), rgba(74, 158, 255, 0.15));
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(74, 158, 255, 0.3);
+}
+
+.model-icon-auto {
+    font-size: 16px;
+    line-height: 1;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+.model-label-auto {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.model-arrow {
+    font-size: 10px;
+    opacity: 0.7;
+    transition: transform 0.3s ease;
+    margin-left: 4px;
+}
+
+.model-btn-auto:hover .model-arrow {
+    transform: translateY(2px);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   INPUT DE TEXTO
+   ═══════════════════════════════════════════════════════════════════ */
+
+.cursor-input {
+    flex: 1;
+    background: rgba(26, 36, 50, 0.5);
+    border: 1.5px solid rgba(74, 158, 255, 0.15);
+    border-radius: var(--radius-lg);
+    padding: 10px 14px;
+    color: var(--text-primary);
+    font-size: 14px;
+    line-height: 1.5;
+    resize: none;
+    outline: none;
+    min-height: 36px;
+    max-height: 150px;
+    overflow-y: auto;
+    font-family: var(--font-family);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.cursor-input:focus {
+    border-color: var(--accent);
+    background: rgba(26, 36, 50, 0.7);
+    box-shadow: 0 0 0 4px rgba(74, 158, 255, 0.15),
+                inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.cursor-input::placeholder {
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   BOTONES DE ACCIÓN - Diseño Profesional con Iconos Claros
+   ═══════════════════════════════════════════════════════════════════ */
+
+.cursor-btn {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1.5px solid rgba(255, 255, 255, 0.15);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
+}
+
+.cursor-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    transition: left 0.5s;
+}
+
+.cursor-btn:hover::before {
+    left: 100%;
+}
+
+.cursor-btn:hover {
+    transform: translateY(-3px) scale(1.08);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+    border-color: rgba(255, 255, 255, 0.25);
+}
+
+.cursor-btn i,
+.cursor-btn svg {
+    font-size: 16px;
+    color: var(--text-primary);
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+    position: relative;
+    z-index: 1;
+}
+
+/* Botón Adjuntar */
+.attach-btn {
+    background: linear-gradient(135deg, rgba(90, 90, 98, 0.85), rgba(74, 74, 82, 0.95));
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.attach-btn:hover {
+    background: linear-gradient(135deg, rgba(110, 110, 118, 0.95), rgba(90, 90, 98, 1));
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.attach-btn i {
+    color: #e0e0e0;
+    font-size: 17px;
+}
+
+/* Botón Llamada Conversacional (Ecualizador) */
+.voice-call-btn {
+    background: linear-gradient(135deg, rgba(74, 158, 255, 0.2), rgba(74, 158, 255, 0.1));
+    border-color: rgba(74, 158, 255, 0.3);
+}
+
+.voice-call-btn:hover {
+    background: linear-gradient(135deg, rgba(74, 158, 255, 0.3), rgba(74, 158, 255, 0.2));
+    border-color: rgba(74, 158, 255, 0.5);
+    box-shadow: 0 6px 20px rgba(74, 158, 255, 0.4);
+}
+
+.equalizer-icon {
+    width: 18px;
+    height: 18px;
+    color: #4a9eff;
+    animation: equalizer-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes equalizer-pulse {
+    0%, 100% {
+        opacity: 0.8;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+}
+
+/* Botón Micrófono (Dictar) */
+.mic-btn {
+    background: linear-gradient(135deg, rgba(90, 90, 98, 0.85), rgba(74, 74, 82, 0.95));
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.mic-btn:hover {
+    background: linear-gradient(135deg, rgba(110, 110, 118, 0.95), rgba(90, 90, 98, 1));
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.mic-btn i {
+    color: #e0e0e0;
+    font-size: 17px;
+}
+
+.mic-btn.mic-active {
+    background: linear-gradient(135deg, #10a37f, #0e8a6a);
+    color: white;
+    border-color: rgba(255, 255, 255, 0.3);
+    animation: pulse-mic 1.5s infinite;
+    box-shadow: 0 0 24px rgba(16, 163, 127, 0.6),
+                0 4px 16px rgba(16, 163, 127, 0.4);
+}
+
+.mic-btn.mic-active i {
+    color: white;
+    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4));
+}
+
+/* Botón Enviar */
+.send-btn {
+    background: linear-gradient(135deg, #10a37f, #0e8a6a);
+    color: white;
+    border-color: rgba(255, 255, 255, 0.3);
+    box-shadow: 0 4px 16px rgba(16, 163, 127, 0.4);
+}
+
+.send-btn:hover {
+    background: linear-gradient(135deg, #0e8a6a, #0c7a5a);
+    box-shadow: 0 6px 24px rgba(16, 163, 127, 0.6);
+    transform: translateY(-3px) scale(1.1);
+}
+
+.send-btn i {
+    color: white;
+    font-size: 18px;
+    font-weight: 900;
+    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4));
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CÍRCULO DE CONTEXTO USADO - Con Efecto "Hast" (Google AI Style)
+   ═══════════════════════════════════════════════════════════════════ */
+
+.context-indicator {
+    width: 40px;
+    height: 40px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.context-circle {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+}
+
+.context-bg {
+    stroke: rgba(255, 255, 255, 0.1);
+}
+
+.context-progress {
+    stroke: var(--accent);
+    transition: stroke-dashoffset 0.5s ease, stroke 0.3s ease;
+    filter: drop-shadow(0 0 4px currentColor);
+}
+
+/* Efecto "Hast" - Espiral de colores animado */
+.context-indicator::after {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: conic-gradient(
+        from 0deg,
+        #4a9eff 0deg,
+        #10a37f 90deg,
+        #eab308 180deg,
+        #f59e0b 270deg,
+        #ef4444 360deg
+    );
+    opacity: 0;
+    animation: hast-spiral 3s ease-in-out infinite;
+    z-index: -1;
+    filter: blur(8px);
+}
+
+@keyframes hast-spiral {
+    0%, 100% {
+        opacity: 0;
+        transform: rotate(0deg) scale(1);
+    }
+    50% {
+        opacity: 0.3;
+        transform: rotate(180deg) scale(1.2);
+    }
+}
+
+.context-indicator:hover::after {
+    animation-duration: 1.5s;
+    opacity: 0.4;
+}
+
+.context-percent {
+    position: absolute;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 1;
+    pointer-events: none;
+    text-shadow: 0 0 8px currentColor;
+    animation: percent-glow 2s ease-in-out infinite;
+}
+
+@keyframes percent-glow {
+    0%, 100% {
+        text-shadow: 0 0 8px currentColor;
+    }
+    50% {
+        text-shadow: 0 0 12px currentColor, 0 0 16px currentColor;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   INDICADOR DE GRABACIÓN
+   ═══════════════════════════════════════════════════════════════════ */
+
+.recording-indicator {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(231, 76, 60, 0.95);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: white;
+    padding: 6px 12px;
+    border-radius: var(--radius-md);
+    font-size: 12px;
+    font-weight: 600;
+    display: none;
+    box-shadow: 0 4px 16px rgba(231, 76, 60, 0.4);
+    z-index: 1000;
+    white-space: nowrap;
+}
+
+.recording-indicator.active {
+    display: block;
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    50% {
+        opacity: 0.7;
+    }
+}
+
+@keyframes pulse-mic {
+    0%, 100% {
+        box-shadow: 0 0 24px rgba(16, 163, 127, 0.6);
+    }
+    50% {
+        box-shadow: 0 0 32px rgba(16, 163, 127, 0.8);
+    }
+}
+
+@keyframes menuSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+    .cursor-chat-bar {
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 10px 12px;
+    }
+    
+    .agent-btn span {
+        display: none;
+    }
+    
+    .cursor-input {
+        min-width: 0;
+        flex: 1 1 100%;
+        order: 3;
+    }
+}
+
