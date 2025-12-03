@@ -1,0 +1,133 @@
+# ════════════════════════════════════════════════════════════════════════════
+# ELECTRON BUILDER CONFIGURATION - Enterprise Level
+# Configuración para builds multi-plataforma con code signing
+# ════════════════════════════════════════════════════════════════════════════
+
+appId: com.qwenvalencia.app
+productName: Qwen-Valencia
+copyright: Copyright © 2025 GUESTVALENCIA
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - 'src/**/*'
+  - 'package.json'
+  - 'package-lock.json'
+  - 'qwen-valencia.env.example'
+  - 'README.md'
+  - '!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}'
+  - '!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}'
+  - '!**/node_modules/*.d.ts'
+  - '!**/node_modules/.bin'
+  - '!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}'
+  - '!.editorconfig'
+  - '!**/._*'
+  - '!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}'
+  - '!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}'
+  - '!**/{appveyor.yml,.travis.yml,circle.yml}'
+  - '!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}'
+
+# Configuración de actualizaciones
+publish:
+  provider: generic
+  url: https://updates.qwenvalencia.com
+  # Para usar GitHub Releases, cambiar a:
+  # provider: github
+  # owner: tu-usuario
+  # repo: qwen-valencia
+
+# Configuración por plataforma
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  icon: assets/icon.ico
+  publisherName: GUESTVALENCIA
+  # Code signing (configurar en variables de entorno)
+  # sign: null  # Deshabilitar signing
+  # signDlls: false
+  # certificateFile: path/to/certificate.pfx
+  # certificatePassword: ${CSC_KEY_PASSWORD}
+  # signingHashAlgorithms: ['sha256']
+  # artifactName: ${productName}-${version}-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Qwen-Valencia
+  include: build/installer.nsh
+
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  icon: assets/icon.icns
+  category: public.app-category.developer-tools
+  # Code signing y notarization (configurar en variables de entorno)
+  # identity: Developer ID Application: GUESTVALENCIA
+  # hardenedRuntime: true
+  # gatekeeperAssess: false
+  # entitlements: build/entitlements.mac.plist
+  # entitlementsInherit: build/entitlements.mac.plist
+  # notarize:
+  #   teamId: ${APPLE_TEAM_ID}
+
+dmg:
+  title: ${productName} ${version}
+  icon: assets/icon.icns
+  background: assets/dmg-background.png
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+  icon: assets/icon.png
+  category: Development
+  maintainer: GUESTVALENCIA
+  desktop:
+    Name: Qwen-Valencia
+    Comment: AI Assistant - Qwen & DeepSeek
+    Categories: Development;Utility;
+    StartupNotify: true
+
+# Configuración de compresión
+compression: maximum
+
+# Configuración de versiones
+electronVersion: 28.0.0
+electronDownload:
+  cache: .electron-cache
+  mirror: https://npm.taobao.org/mirrors/electron/
+
+# Variables de entorno para builds
+env:
+  CSC_IDENTITY_AUTO_DISCOVERY: true
+  # Para Windows:
+  # CSC_LINK: path/to/certificate.pfx
+  # CSC_KEY_PASSWORD: password
+  # Para macOS:
+  # APPLE_ID: your-apple-id@example.com
+  # APPLE_APP_SPECIFIC_PASSWORD: app-specific-password
+  # APPLE_TEAM_ID: team-id
+

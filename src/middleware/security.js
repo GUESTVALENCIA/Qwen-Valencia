@@ -8,9 +8,14 @@
  */
 class SecurityMiddleware {
   constructor(options = {}) {
+    // Por defecto, en producción no permitir CORS abierto
+    const defaultCorsOrigin = process.env.NODE_ENV === 'development' 
+      ? (options.corsOrigin || '*')
+      : (options.corsOrigin || 'file://');
+    
     this.options = {
       enableHelmet: options.enableHelmet !== false,
-      corsOrigin: options.corsOrigin || '*',
+      corsOrigin: defaultCorsOrigin,
       corsCredentials: options.corsCredentials !== false,
       corsMethods: options.corsMethods || ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
       corsHeaders: options.corsHeaders || ['Content-Type', 'Authorization', 'mcp-secret', 'X-Requested-With'],

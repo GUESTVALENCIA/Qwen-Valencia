@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Terminal - Qwen-Valencia</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .terminal-header {
+      background: #252526;
+      padding: 8px 12px;
+      border-bottom: 1px solid #3e3e42;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+    }
+    
+    .terminal-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+    
+    .terminal-icon {
+      font-size: 16px;
+    }
+    
+    .terminal-close {
+      background: transparent;
+      border: none;
+      color: #d4d4d4;
+      cursor: pointer;
+      padding: 4px 8px;
+      font-size: 16px;
+      border-radius: 3px;
+    }
+    
+    .terminal-close:hover {
+      background: #3e3e42;
+    }
+    
+    .terminal-output {
+      flex: 1;
+      padding: 12px;
+      overflow-y: auto;
+      font-size: 14px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    
+    .terminal-output::-webkit-scrollbar {
+      width: 10px;
+    }
+    
+    .terminal-output::-webkit-scrollbar-track {
+      background: #1e1e1e;
+    }
+    
+    .terminal-output::-webkit-scrollbar-thumb {
+      background: #424242;
+      border-radius: 5px;
+    }
+    
+    .terminal-input-container {
+      background: #252526;
+      border-top: 1px solid #3e3e42;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .terminal-prompt {
+      color: #4ec9b0;
+      font-weight: bold;
+    }
+    
+    .terminal-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #d4d4d4;
+      font-family: inherit;
+      font-size: 14px;
+      outline: none;
+    }
+    
+    .terminal-line {
+      margin-bottom: 2px;
+    }
+    
+    .terminal-line.stdout {
+      color: #d4d4d4;
+    }
+    
+    .terminal-line.stderr {
+      color: #f48771;
+    }
+    
+    .terminal-line.input {
+      color: #4ec9b0;
+    }
+  </style>
+</head>
+<body>
+  <div class="terminal-header">
+    <div class="terminal-title">
+      <span class="terminal-icon" id="terminalIcon">💻</span>
+      <span id="terminalName">Terminal</span>
+    </div>
+    <button class="terminal-close" onclick="window.terminalAPI?.close()">✕</button>
+  </div>
+  
+  <div class="terminal-output" id="terminalOutput"></div>
+  
+  <div class="terminal-input-container">
+    <span class="terminal-prompt" id="terminalPrompt">$</span>
+    <input 
+      type="text" 
+      class="terminal-input" 
+      id="terminalInput" 
+      autocomplete="off"
+      spellcheck="false"
+    />
+  </div>
+  
+  <script>
+    const { ipcRenderer } = require('electron');
+    let terminalType = 'bash';
+    let terminalId = null;
+    let initialCommand = '';
+    
+    const terminalOutput = document.getElementById('terminalOutput');
+    const terminalInput = document.getElementById('terminalInput');
+    const terminalPrompt = document.getElementById('terminalPrompt');
+    const terminalIcon = document.getElementById('terminalIcon');
+    const terminalName = document.getElementById('terminalName');
+    
+    // Configurar según tipo de terminal
+    const terminalConfigs = {
+      bash: { icon: '💻', prompt: '$', name: 'Bash' },
+      powershell: { icon: '⚡', prompt: 'PS>', name: 'PowerShell' },
+      cmd: { icon: '📟', prompt: 'C:\\>', name: 'CMD' },
+      node: { icon: '🟢', prompt: '>', name: 'Node.js' },
+      wsl: { icon: '🐧', prompt: '$', name: 'WSL' }
+    };
+    
+    // Recibir configuración inicial vía IPC
+    ipcRenderer.once('terminal-init', (event, config) => {
+      terminalType = config.terminalType || 'bash';
+      terminalId = config.terminalId;
+      initialCommand = config.initialCommand || '';
+      
+      const termConfig = terminalConfigs[terminalType] || terminalConfigs.bash;
+      terminalIcon.textContent = termConfig.icon;
+      terminalName.textContent = termConfig.name;
+      terminalPrompt.textContent = termConfig.prompt;
+      
+      // Ejecutar comando inicial si existe
+      if (initialCommand) {
+        setTimeout(() => {
+          ipcRenderer.send('terminal-command', { terminalId, command: initialCommand });
+        }, 500);
+      }
+    });
+    
+    // Exponer API al preload
+    window.terminalAPI = {
+      close: () => {
+        if (terminalId) {
+          ipcRenderer.send('terminal-close', terminalId);
+        }
+        window.close();
+      }
+    };
+    
+    // Escuchar salida de terminal
+    ipcRenderer.on('terminal-output', (event, { type, data }) => {
+      appendOutput(data, type);
+    });
+    
+    ipcRenderer.on('terminal-exit', (event, { code }) => {
+      appendOutput(`\n[Proceso terminado con código ${code}]`, 'stderr');
+      terminalInput.disabled = true;
+    });
+    
+    ipcRenderer.on('terminal-error', (event, { error }) => {
+      appendOutput(`\n[Error: ${error}]`, 'stderr');
+    });
+    
+    // Manejar entrada
+    terminalInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const command = terminalInput.value;
+        if (command.trim() && terminalId) {
+          const config = terminalConfigs[terminalType] || terminalConfigs.bash;
+          appendOutput(`${config.prompt} ${command}`, 'input');
+          ipcRenderer.send('terminal-command', { terminalId, command });
+          terminalInput.value = '';
+        }
+      }
+    });
+    
+    function appendOutput(text, type = 'stdout') {
+      const line = document.createElement('div');
+      line.className = `terminal-line ${type}`;
+      line.textContent = text;
+      terminalOutput.appendChild(line);
+      terminalOutput.scrollTop = terminalOutput.scrollHeight;
+    }
+    
+    // Enfocar input al cargar
+    terminalInput.focus();
+  </script>
+</body>
+</html>
+

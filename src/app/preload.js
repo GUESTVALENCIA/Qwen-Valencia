@@ -314,6 +314,59 @@ contextBridge.exposeInMainWorld('qwenValencia', {
 
   close: () => {
     ipcRenderer.send('window-close');
+  },
+
+  /**
+   * ════════════════════════════════════════════════════════════════════════════
+   * TERMINAL MANAGEMENT - Gestión de Terminales
+   * ════════════════════════════════════════════════════════════════════════════
+   */
+
+  /**
+   * Crear terminal
+   */
+  createTerminal: async (type = 'auto', command = null) => {
+    return await ipcRenderer.invoke('create-terminal', { type, command });
+  },
+
+  /**
+   * Obtener terminales disponibles
+   */
+  getAvailableTerminals: async () => {
+    return await ipcRenderer.invoke('get-available-terminals');
+  },
+
+  /**
+   * ════════════════════════════════════════════════════════════════════════════
+   * MULTI-WINDOW MANAGEMENT - Gestión Multi-Ventana
+   * ════════════════════════════════════════════════════════════════════════════
+   */
+
+  /**
+   * Crear nueva ventana
+   */
+  createWindow: async (type = 'main', options = {}) => {
+    return await ipcRenderer.invoke('create-window', { type, options });
+  },
+
+  /**
+   * Obtener todas las ventanas
+   */
+  getWindows: async () => {
+    return await ipcRenderer.invoke('get-windows');
+  },
+
+  /**
+   * ════════════════════════════════════════════════════════════════════════════
+   * LAZY LOADING - Carga Diferida de Módulos
+   * ════════════════════════════════════════════════════════════════════════════
+   */
+
+  /**
+   * Cargar módulo bajo demanda
+   */
+  loadLazyModule: async (moduleName) => {
+    return await ipcRenderer.invoke('load-lazy-module', { moduleName });
   }
 });
 

@@ -9,12 +9,13 @@
  * ════════════════════════════════════════════════════════════════════════════
  */
 
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, shell } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const axios = require('axios');
 const express = require('express');
 const os = require('os');
+const Store = require('electron-store');
 const ModelRouter = require('../orchestrator/model-router');
 const MCPUniversal = require('../mcp/mcp-universal');
 const OllamaMCPServer = require('../mcp/ollama-mcp-server');
@@ -23,6 +24,10 @@ const variablesLoader = require('../utils/variables-loader');
 const HeyGenTokenService = require('../services/heygen-token-service');
 const { LoggerFactory } = require('../utils/logger');
 const { MetricsFactory, globalMetrics } = require('../utils/metrics');
+const { validateIPC } = require('./ipc-validator');
+const { initializeTray, updateTrayMenu, showNotification, destroyTray } = require('./tray');
+const { configureUpdater, startAutoUpdateCheck, checkForUpdates } = require('./updater');
+const terminalManager = require('./terminal');
 
 // Inicializar logger estructurado
 const logger = LoggerFactory.create({ service: 'electron-main' });
@@ -34,7 +39,17 @@ const metrics = MetricsFactory.create({ service: 'electron-main' });
 logger.info('Cargando variables desde qwen-valencia.env');
 variablesLoader.load();
 
+// Store para persistencia de estado
+const store = new Store({
+  name: 'qwen-valencia-config',
+  defaults: {
+    windowBounds: { width: 1200, height: 800, x: undefined, y: undefined },
+    windowMaximized: false
+  }
+});
+
 let mainWindow;
+let windows = new Map(); // Gestión multi-ventana
 let mcpServer;
 let modelRouter;
 let ollamaMcpServer;
@@ -44,6 +59,16 @@ let apiHttpServer; // Servidor HTTP (retornado por listen())
 let heygenTokenService;
 let conversationService; // Servicio de conversación
 let deepgramService; // Instancia global de DeepgramService
+let tray = null;
+
+// Módulos cargados bajo demanda (lazy loading)
+const lazyModules = {
+  mcpServer: null,
+  ollamaMcpServer: null,
+  groqApiServer: null,
+  conversationService: null,
+  deepgramService: null
+};
 
 /**
  * Verifica si un servidor está corriendo
@@ -58,9 +83,16 @@ async function checkServerHealth(url, timeout = 3000) {
 }
 
 /**
- * Inicia servidores dedicados si no están corriendo
+ * Inicia servidores dedicados si no están corriendo (lazy loading)
  */
-async function startDedicatedServers() {
+async function startDedicatedServers(lazy = false) {
+  // Si es lazy loading, solo verificar, no iniciar automáticamente
+  if (lazy) {
+    const ollamaRunning = await checkServerHealth('http://localhost:6002/ollama/health');
+    const groqRunning = await checkServerHealth('http://localhost:6003/groq/health');
+    return { ollamaRunning, groqRunning };
+  }
+  
   // Verificar Ollama MCP Server (puerto 6002)
   const ollamaRunning = await checkServerHealth('http://localhost:6002/ollama/health');
   if (!ollamaRunning) {
@@ -95,18 +127,29 @@ async function startDedicatedServers() {
 }
 
 /**
- * Inicia el servidor MCP Universal
+ * Inicia el servidor MCP Universal con mejor manejo de puertos
  */
 async function startMCPServer() {
   try {
+    // Asegurar que el puerto esté disponible
+    const port = await ensureMCPServerPort();
+    
     mcpServer = new MCPUniversal();
     const started = await mcpServer.start();
     
     if (started) {
-      logger.info('MCP Server iniciado exitosamente');
+      logger.info('MCP Server iniciado exitosamente', { port });
     } else {
       logger.warn('MCP Server no pudo iniciar (puerto ocupado)');
       logger.warn('La aplicación continuará, pero algunas funciones pueden no estar disponibles');
+      
+      // Intentar con puerto alternativo
+      const altPort = await findAvailablePort(port + 1);
+      if (altPort) {
+        logger.info(`Intentando iniciar MCP Server en puerto alternativo ${altPort}`);
+        process.env.MCP_PORT = altPort.toString();
+        // No reintentar automáticamente para evitar loops infinitos
+      }
     }
   } catch (error) {
     logger.error('Error iniciando MCP Server', { error: error.message, stack: error.stack });
@@ -115,22 +158,68 @@ async function startMCPServer() {
 }
 
 /**
- * Crea la ventana principal
+ * Crea la ventana principal con persistencia de estado
  */
 function createWindow() {
+  // Restaurar posición y tamaño guardados
+  const windowBounds = store.get('windowBounds');
+  const wasMaximized = store.get('windowMaximized');
+  
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: windowBounds.width || 1200,
+    height: windowBounds.height || 800,
+    x: windowBounds.x,
+    y: windowBounds.y,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: true
+      webSecurity: true,
+      sandbox: false // Necesario para algunas funcionalidades
     },
-    icon: path.join(__dirname, '..', '..', 'assets', 'icon.png') // Opcional
+    icon: path.join(__dirname, '..', '..', 'assets', 'icon.png'),
+    show: false // No mostrar hasta que esté listo
   });
 
+  // Restaurar maximizado si estaba maximizado
+  if (wasMaximized) {
+    mainWindow.maximize();
+  }
+
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+
+  // Mostrar ventana cuando esté lista
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    
+    // Enfocar la ventana
+    if (process.platform === 'darwin') {
+      app.dock.show();
+    }
+  });
+
+  // Guardar posición y tamaño cuando cambien
+  mainWindow.on('moved', () => {
+    if (!mainWindow.isMaximized()) {
+      store.set('windowBounds', mainWindow.getBounds());
+    }
+  });
+
+  mainWindow.on('resized', () => {
+    if (!mainWindow.isMaximized()) {
+      store.set('windowBounds', mainWindow.getBounds());
+    }
+    store.set('windowMaximized', mainWindow.isMaximized());
+  });
+
+  mainWindow.on('maximize', () => {
+    store.set('windowMaximized', true);
+  });
+
+  mainWindow.on('unmaximize', () => {
+    store.set('windowMaximized', false);
+    store.set('windowBounds', mainWindow.getBounds());
+  });
 
   // Abrir DevTools en desarrollo
   if (process.env.NODE_ENV === 'development') {
@@ -140,6 +229,278 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  // Prevenir cierre si hay trabajo pendiente (opcional)
+  mainWindow.on('close', (event) => {
+    // En macOS, mantener la app corriendo aunque se cierre la ventana
+    if (process.platform === 'darwin') {
+      if (!app.isQuiting) {
+        event.preventDefault();
+        mainWindow.hide();
+        return;
+      }
+    }
+  });
+}
+
+/**
+ * Crea menús nativos del OS
+ */
+function createApplicationMenu() {
+  const template = [
+    {
+      label: 'Archivo',
+      submenu: [
+        {
+          label: 'Nueva Conversación',
+          accelerator: 'CmdOrCtrl+N',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-new-chat');
+            }
+          }
+        },
+        {
+          label: 'Abrir...',
+          accelerator: 'CmdOrCtrl+O',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-open-chat');
+            }
+          }
+        },
+        {
+          label: 'Guardar',
+          accelerator: 'CmdOrCtrl+S',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-save-chat');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Exportar...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-export-chat');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: process.platform === 'darwin' ? 'Salir' : 'Cerrar',
+          accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q',
+          click: () => {
+            app.quit();
+          }
+        }
+      ]
+    },
+    {
+      label: 'Editar',
+      submenu: [
+        { role: 'undo', label: 'Deshacer' },
+        { role: 'redo', label: 'Rehacer' },
+        { type: 'separator' },
+        { role: 'cut', label: 'Cortar' },
+        { role: 'copy', label: 'Copiar' },
+        { role: 'paste', label: 'Pegar' },
+        { role: 'selectAll', label: 'Seleccionar todo' }
+      ]
+    },
+    {
+      label: 'Ver',
+      submenu: [
+        {
+          label: 'Alternar Tema',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-toggle-theme');
+            }
+          }
+        },
+        {
+          label: 'Mostrar/Ocultar Sidebar',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-toggle-sidebar');
+            }
+          }
+        },
+        { type: 'separator' },
+        { role: 'reload', label: 'Recargar' },
+        { role: 'forceReload', label: 'Forzar Recarga' },
+        { role: 'toggleDevTools', label: 'Herramientas de Desarrollador' },
+        { type: 'separator' },
+        { role: 'resetZoom', label: 'Zoom Normal' },
+        { role: 'zoomIn', label: 'Acercar' },
+        { role: 'zoomOut', label: 'Alejar' },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: 'Pantalla Completa' }
+      ]
+    },
+    {
+      label: 'Ejecutar',
+      submenu: [
+        {
+          label: 'Ejecutar Código',
+          accelerator: 'CmdOrCtrl+E',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-execute-code');
+            }
+          }
+        },
+        {
+          label: 'Ejecutar Comando',
+          accelerator: 'CmdOrCtrl+Shift+E',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-execute-command');
+            }
+          }
+        }
+      ]
+    },
+    {
+      label: 'Terminal',
+      submenu: [
+        {
+          label: 'Abrir Terminal',
+          submenu: [
+            {
+              label: 'Bash',
+              click: () => {
+                terminalManager.createTerminalWindow('bash');
+              }
+            },
+            {
+              label: 'PowerShell',
+              click: () => {
+                terminalManager.createTerminalWindow('powershell');
+              }
+            },
+            {
+              label: 'CMD',
+              click: () => {
+                terminalManager.createTerminalWindow('cmd');
+              }
+            },
+            {
+              label: 'Node.js REPL',
+              click: () => {
+                terminalManager.createTerminalWindow('node');
+              }
+            },
+            { type: 'separator' },
+            {
+              label: 'Auto (Mejor para sistema)',
+              accelerator: 'CmdOrCtrl+Shift+T',
+              click: () => {
+                terminalManager.createTerminalWindow('auto');
+              }
+            }
+          ]
+        },
+        { type: 'separator' },
+        {
+          label: 'Cerrar Todas las Terminales',
+          click: () => {
+            terminalManager.closeAllTerminals();
+          }
+        }
+      ]
+    },
+    {
+      label: 'Ayuda',
+      submenu: [
+        {
+          label: 'Acerca de Qwen-Valencia',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-show-about');
+            }
+          }
+        },
+        {
+          label: 'Verificar Actualizaciones',
+          click: async () => {
+            try {
+              await checkForUpdates();
+              showNotification('Actualizaciones', 'Verificando actualizaciones...');
+            } catch (error) {
+              logger.error('Error verificando actualizaciones', { error: error.message });
+            }
+          }
+        }
+      ]
+    }
+  ];
+
+  // macOS: Agregar menú de aplicación
+  if (process.platform === 'darwin') {
+    template.unshift({
+      label: app.getName(),
+      submenu: [
+        { role: 'about', label: `Acerca de ${app.getName()}` },
+        { type: 'separator' },
+        { role: 'services', label: 'Servicios' },
+        { type: 'separator' },
+        { role: 'hide', label: `Ocultar ${app.getName()}` },
+        { role: 'hideOthers', label: 'Ocultar Otros' },
+        { role: 'unhide', label: 'Mostrar Todo' },
+        { type: 'separator' },
+        { role: 'quit', label: `Salir de ${app.getName()}` }
+      ]
+    });
+  }
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+  logger.info('Menús nativos creados');
+}
+
+/**
+ * Mejora la detección y manejo de puertos ocupados
+ */
+async function findAvailablePort(startPort, maxAttempts = 10) {
+  const net = require('net');
+  
+  for (let i = 0; i < maxAttempts; i++) {
+    const port = startPort + i;
+    const available = await new Promise((resolve) => {
+      const server = net.createServer();
+      server.listen(port, () => {
+        server.once('close', () => resolve(true));
+        server.close();
+      });
+      server.on('error', () => resolve(false));
+    });
+    
+    if (available) {
+      return port;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Verifica y corrige puerto MCP
+ */
+async function ensureMCPServerPort() {
+  const configuredPort = parseInt(process.env.MCP_PORT || '6000', 10);
+  
+  // Verificar si el puerto está ocupado
+  const availablePort = await findAvailablePort(configuredPort);
+  
+  if (availablePort !== configuredPort) {
+    logger.warn(`Puerto MCP ${configuredPort} ocupado, usando puerto ${availablePort}`);
+    process.env.MCP_PORT = availablePort.toString();
+  }
+  
+  return availablePort || configuredPort;
 }
 
 /**
@@ -188,11 +549,22 @@ function startAPIServer() {
     apiServer = express();
     apiServer.use(express.json());
     
-    // CORS para permitir requests desde el renderer
+    // CORS mejorado - Enterprise Level (solo permitir orígenes específicos)
+    const allowedOrigins = process.env.NODE_ENV === 'development' 
+      ? ['http://localhost:*', 'file://*']
+      : ['file://*'];
+    
     apiServer.use((req, res, next) => {
-      res.header('Access-Control-Allow-Origin', '*');
-      res.header('Access-Control-Allow-Headers', 'Content-Type');
+      const origin = req.headers.origin;
+      // En desarrollo, permitir localhost; en producción solo file://
+      if (process.env.NODE_ENV === 'development' || !origin || origin.startsWith('file://')) {
+        res.header('Access-Control-Allow-Origin', origin || '*');
+      } else {
+        res.header('Access-Control-Allow-Origin', 'file://');
+      }
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
       res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.header('Access-Control-Allow-Credentials', 'true');
       if (req.method === 'OPTIONS') {
         return res.sendStatus(200);
       }
@@ -232,9 +604,9 @@ function startAPIServer() {
 // ════════════════════════════════════════════════════════════════════════════
 
 /**
- * Handler para routing de mensajes
+ * Handler para routing de mensajes (con validación IPC)
  */
-ipcMain.handle('route-message', async (event, params) => {
+ipcMain.handle('route-message', validateIPC('route-message', async (event, params) => {
   const startTime = Date.now();
   const model = params.model || params.options?.model || 'unknown';
   const useAPI = params.useAPI !== undefined ? params.useAPI : true;
@@ -277,12 +649,12 @@ ipcMain.handle('route-message', async (event, params) => {
       error: error.message
     };
   }
-});
+}));
 
 /**
- * Handler para ejecutar código
+ * Handler para ejecutar código (con validación IPC)
  */
-ipcMain.handle('execute-code', async (event, { language, code }) => {
+ipcMain.handle('execute-code', validateIPC('execute-code', async (event, { language, code }) => {
   try {
     if (!modelRouter) {
       throw new Error('Model Router no inicializado');
@@ -297,12 +669,12 @@ ipcMain.handle('execute-code', async (event, { language, code }) => {
       error: error.message
     };
   }
-});
+}));
 
 /**
- * Handler para leer archivo
+ * Handler para leer archivo (con validación IPC)
  */
-ipcMain.handle('read-file', async (event, { filePath }) => {
+ipcMain.handle('read-file', validateIPC('read-file', async (event, { filePath }) => {
   try {
     if (!modelRouter) {
       throw new Error('Model Router no inicializado');
@@ -317,12 +689,12 @@ ipcMain.handle('read-file', async (event, { filePath }) => {
       error: error.message
     };
   }
-});
+}));
 
 /**
- * Handler para listar archivos
+ * Handler para listar archivos (con validación IPC)
  */
-ipcMain.handle('list-files', async (event, { dirPath }) => {
+ipcMain.handle('list-files', validateIPC('list-files', async (event, { dirPath }) => {
   try {
     if (!modelRouter) {
       throw new Error('Model Router no inicializado');
@@ -337,12 +709,12 @@ ipcMain.handle('list-files', async (event, { dirPath }) => {
       error: error.message
     };
   }
-});
+}));
 
 /**
- * Handler para generar audio con Cartesia TTS
+ * Handler para generar audio con Cartesia TTS (con validación IPC)
  */
-ipcMain.handle('generate-speech', async (event, { text, options = {} }) => {
+ipcMain.handle('generate-speech', validateIPC('generate-speech', async (event, { text, options = {} }) => {
   try {
     const CartesiaService = require('../services/cartesia-service');
     const cartesia = new CartesiaService();
@@ -372,12 +744,12 @@ ipcMain.handle('generate-speech', async (event, { text, options = {} }) => {
       error: error.message
     };
   }
-});
+}));
 
 /**
- * Handler para Cartesia TTS (compatible con app.js)
+ * Handler para Cartesia TTS (compatible con app.js) (con validación IPC)
  */
-ipcMain.handle('cartesia-tts', async (event, params) => {
+ipcMain.handle('cartesia-tts', validateIPC('cartesia-tts', async (event, params) => {
   try {
     const CartesiaService = require('../services/cartesia-service');
     const cartesia = new CartesiaService();
@@ -412,12 +784,12 @@ ipcMain.handle('cartesia-tts', async (event, params) => {
       error: error.message
     };
   }
-});
+}));
 
 /**
- * Handler para ejecutar código en laboratorio de IAs
+ * Handler para ejecutar código en laboratorio de IAs (con validación IPC)
  */
-ipcMain.handle('execute-in-lab', async (event, { language, code, options = {} }) => {
+ipcMain.handle('execute-in-lab', validateIPC('execute-in-lab', async (event, { language, code, options = {} }) => {
   try {
     const AILab = require('../lab/ai-lab');
     const lab = new AILab();
@@ -431,12 +803,12 @@ ipcMain.handle('execute-in-lab', async (event, { language, code, options = {} })
       error: error.message
     };
   }
-});
+}));
 
 /**
- * Handler para transcribir audio
+ * Handler para transcribir audio (con validación IPC)
  */
-ipcMain.handle('transcribe-audio', async (event, { audio, mimeType }) => {
+ipcMain.handle('transcribe-audio', validateIPC('transcribe-audio', async (event, { audio, mimeType }) => {
   try {
     // Intentar usar Web Speech API si está disponible
     // Por ahora, retornar error para que el frontend use Web Speech API directamente
@@ -487,11 +859,11 @@ ipcMain.handle('deepgram-transcribe', async (event, params) => {
 /**
  * Handler para iniciar DeepGram Live Transcription
  */
-ipcMain.handle('deepgram-start-live', async (event) => {
+ipcMain.handle('deepgram-start-live', validateIPC('deepgram-start-live', async (event) => {
   try {
+    // Lazy loading de deepgramService
     if (!deepgramService) {
-      const DeepgramService = require('../services/deepgram-service');
-      deepgramService = new DeepgramService();
+      await loadLazyModule('deepgramService');
     }
     
     // Si ya hay una conexión activa, detenerla primero
@@ -591,14 +963,16 @@ ipcMain.handle('deepgram-send-audio', async (event, { audio }) => {
 /**
  * Handler para iniciar conversación
  */
-ipcMain.handle('start-conversation', async (event, { mode = 'text', userId = null }) => {
+ipcMain.handle('start-conversation', validateIPC('start-conversation', async (event, { mode = 'text', userId = null }) => {
   try {
     if (!modelRouter) {
       throw new Error('Model Router no inicializado');
     }
 
-    const ConversationService = require('../services/conversation-service');
-    conversationService = new ConversationService(modelRouter);
+    // Lazy loading de conversationService
+    if (!conversationService) {
+      await loadLazyModule('conversationService');
+    }
 
     const result = await conversationService.startConversation({
       mode,
@@ -635,12 +1009,12 @@ ipcMain.handle('start-conversation', async (event, { mode = 'text', userId = nul
       error: error.message
     };
   }
-});
+}));
 
 /**
- * Handler para detener conversación
+ * Handler para detener conversación (con validación IPC)
  */
-ipcMain.handle('stop-conversation', async (event) => {
+ipcMain.handle('stop-conversation', validateIPC('stop-conversation', async (event) => {
   try {
     if (conversationService) {
       await conversationService.stopConversation();
@@ -654,12 +1028,12 @@ ipcMain.handle('stop-conversation', async (event) => {
       error: error.message
     };
   }
-});
+}));
 
 /**
- * Handler para enviar audio al stream de conversación
+ * Handler para enviar audio al stream de conversación (con validación IPC)
  */
-ipcMain.handle('send-audio-to-conversation', async (event, { audioBuffer }) => {
+ipcMain.handle('send-audio-to-conversation', validateIPC('send-audio-to-conversation', async (event, { audioBuffer }) => {
   try {
     if (conversationService) {
       conversationService.sendAudio(Buffer.from(audioBuffer));
@@ -676,7 +1050,7 @@ ipcMain.handle('send-audio-to-conversation', async (event, { audioBuffer }) => {
       error: error.message
     };
   }
-});
+}));
 
 /**
  * Handler para iniciar sesión de HeyGen Avatar - DESHABILITADO
@@ -1016,28 +1390,329 @@ ipcMain.on('window-close', (event) => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
+// TERMINAL HANDLERS
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Handler para crear terminal
+ */
+ipcMain.handle('create-terminal', validateIPC('create-terminal', async (event, { type = 'auto', command = null }) => {
+  try {
+    const terminalId = terminalManager.createTerminalWindow(type, command);
+    return {
+      success: true,
+      terminalId
+    };
+  } catch (error) {
+    logger.error('Error creando terminal', { error: error.message, stack: error.stack });
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}));
+
+/**
+ * Handler para enviar comando a terminal
+ */
+ipcMain.on('terminal-command', (event, { terminalId, command }) => {
+  try {
+    terminalManager.sendCommandToTerminal(terminalId, command);
+  } catch (error) {
+    logger.error('Error enviando comando a terminal', { terminalId, error: error.message });
+  }
+});
+
+/**
+ * Handler para cerrar terminal
+ */
+ipcMain.on('terminal-close', (event, terminalId) => {
+  try {
+    if (terminalId) {
+      terminalManager.closeTerminal(terminalId);
+    }
+  } catch (error) {
+    logger.error('Error cerrando terminal', { terminalId, error: error.message });
+  }
+});
+
+/**
+ * Handler para obtener terminales disponibles
+ */
+ipcMain.handle('get-available-terminals', async (event) => {
+  try {
+    const terminals = terminalManager.getAvailableTerminals();
+    return {
+      success: true,
+      terminals
+    };
+  } catch (error) {
+    logger.error('Error obteniendo terminales', { error: error.message });
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// MULTI-WINDOW MANAGEMENT
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Crea una nueva ventana
+ */
+function createNewWindow(windowType = 'main', options = {}) {
+  const windowId = `window-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
+  const windowOptions = {
+    width: options.width || 1200,
+    height: options.height || 800,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      webSecurity: true,
+      sandbox: false
+    },
+    icon: path.join(__dirname, '..', '..', 'assets', 'icon.png'),
+    show: false,
+    ...options
+  };
+  
+  const newWindow = new BrowserWindow(windowOptions);
+  
+  // Cargar contenido según tipo
+  if (windowType === 'main') {
+    newWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  } else if (windowType === 'settings') {
+    // Ventana de configuración (si existe)
+    newWindow.loadFile(path.join(__dirname, 'renderer', 'settings.html'));
+  }
+  
+  // Guardar referencia
+  windows.set(windowId, {
+    window: newWindow,
+    type: windowType,
+    id: windowId
+  });
+  
+  // Mostrar cuando esté listo
+  newWindow.once('ready-to-show', () => {
+    newWindow.show();
+  });
+  
+  // Limpiar al cerrar
+  newWindow.on('closed', () => {
+    windows.delete(windowId);
+    logger.info('Ventana cerrada', { windowId, type: windowType });
+  });
+  
+  logger.info('Nueva ventana creada', { windowId, type: windowType });
+  return windowId;
+}
+
+/**
+ * Handler para crear nueva ventana
+ */
+ipcMain.handle('create-window', validateIPC('create-window', async (event, { type = 'main', options = {} }) => {
+  try {
+    const windowId = createNewWindow(type, options);
+    return {
+      success: true,
+      windowId
+    };
+  } catch (error) {
+    logger.error('Error creando ventana', { error: error.message, stack: error.stack });
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}));
+
+/**
+ * Handler para obtener todas las ventanas
+ */
+ipcMain.handle('get-windows', async (event) => {
+  try {
+    const windowList = Array.from(windows.entries()).map(([id, data]) => ({
+      id,
+      type: data.type,
+      isVisible: data.window.isVisible(),
+      isFocused: data.window.isFocused()
+    }));
+    
+    return {
+      success: true,
+      windows: windowList
+    };
+  } catch (error) {
+    logger.error('Error obteniendo ventanas', { error: error.message });
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// LAZY LOADING - Carga diferida de módulos pesados
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Carga un módulo bajo demanda
+ */
+async function loadLazyModule(moduleName) {
+  if (lazyModules[moduleName]) {
+    return lazyModules[moduleName];
+  }
+  
+  logger.info(`Cargando módulo bajo demanda: ${moduleName}`);
+  const startTime = Date.now();
+  
+  try {
+    switch (moduleName) {
+      case 'mcpServer':
+        if (!mcpServer) {
+          await startMCPServer();
+        }
+        lazyModules.mcpServer = mcpServer;
+        break;
+        
+      case 'ollamaMcpServer':
+        if (!ollamaMcpServer) {
+          await startDedicatedServers();
+        }
+        lazyModules.ollamaMcpServer = ollamaMcpServer;
+        break;
+        
+      case 'groqApiServer':
+        if (!groqApiServer) {
+          await startDedicatedServers();
+        }
+        lazyModules.groqApiServer = groqApiServer;
+        break;
+        
+      case 'conversationService':
+        if (!conversationService && modelRouter) {
+          const ConversationService = require('../services/conversation-service');
+          conversationService = new ConversationService(modelRouter);
+          lazyModules.conversationService = conversationService;
+        }
+        break;
+        
+      case 'deepgramService':
+        if (!deepgramService) {
+          const DeepgramService = require('../services/deepgram-service');
+          deepgramService = new DeepgramService();
+          lazyModules.deepgramService = deepgramService;
+        }
+        break;
+        
+      default:
+        throw new Error(`Módulo desconocido: ${moduleName}`);
+    }
+    
+    const duration = Date.now() - startTime;
+    logger.info(`Módulo ${moduleName} cargado`, { duration: `${duration}ms` });
+    
+    return lazyModules[moduleName];
+  } catch (error) {
+    logger.error(`Error cargando módulo ${moduleName}`, { error: error.message, stack: error.stack });
+    throw error;
+  }
+}
+
+/**
+ * Handler para cargar módulo bajo demanda
+ */
+ipcMain.handle('load-lazy-module', validateIPC('load-lazy-module', async (event, { moduleName }) => {
+  try {
+    await loadLazyModule(moduleName);
+    return {
+      success: true,
+      moduleName
+    };
+  } catch (error) {
+    logger.error('Error en load-lazy-module', { moduleName, error: error.message });
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}));
+
+// ════════════════════════════════════════════════════════════════════════════
 // APP LIFECYCLE
 // ════════════════════════════════════════════════════════════════════════════
 
 app.whenReady().then(async () => {
+  // Crear menús nativos del OS
+  createApplicationMenu();
+  
   // Iniciar servidor de API (para endpoints como HeyGen token)
   startAPIServer();
   
-  // Iniciar servidores dedicados primero
-  await startDedicatedServers();
-  
-  // Iniciar MCP Server
-  startMCPServer();
-  
-  // Inicializar Model Router
+  // Inicializar Model Router (crítico, cargar primero)
   initializeModelRouter();
   
-  // Crear ventana
+  // Crear ventana principal (cargar UI primero para mejor UX)
   createWindow();
+  
+  // Cargar servidores en segundo plano (lazy loading mejorado)
+  // Solo verificar si están corriendo, no iniciar automáticamente
+  startDedicatedServers(true).then(async ({ ollamaRunning, groqRunning }) => {
+    // Si no están corriendo, cargarlos bajo demanda cuando se necesiten
+    if (!ollamaRunning || !groqRunning) {
+      logger.info('Servidores dedicados se cargarán bajo demanda');
+    }
+  }).catch(error => {
+    logger.warn('Error verificando servidores dedicados', { error: error.message });
+  });
+  
+  // MCP Server también se puede cargar bajo demanda
+  // Solo iniciar si es necesario para funcionalidad básica
+  if (process.env.AUTO_START_MCP !== 'false') {
+    startMCPServer().catch(error => {
+      logger.warn('MCP Server se cargará bajo demanda', { error: error.message });
+    });
+  }
+  
+  // Inicializar system tray
+  if (mainWindow) {
+    tray = initializeTray(mainWindow);
+  }
+  
+  // Configurar auto-updater (solo en producción)
+  if (process.env.NODE_ENV !== 'development' && !process.env.DISABLE_AUTO_UPDATE) {
+    try {
+      configureUpdater({
+        autoDownload: true,
+        autoInstallOnAppQuit: true,
+        onUpdateAvailable: (info) => {
+          showNotification('Actualización disponible', `Versión ${info.version} disponible`);
+        },
+        onUpdateDownloaded: (info) => {
+          showNotification('Actualización lista', 'Se instalará al reiniciar');
+        }
+      });
+      
+      // Verificar actualizaciones cada hora
+      startAutoUpdateCheck(60);
+    } catch (error) {
+      logger.warn('Auto-updater no disponible', { error: error.message });
+    }
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
+      if (mainWindow && !tray) {
+        tray = initializeTray(mainWindow);
+      }
+    } else if (mainWindow) {
+      mainWindow.show();
     }
   });
 });
@@ -1049,6 +1724,13 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  app.isQuiting = true;
+  
+  // Destruir system tray
+  if (tray) {
+    destroyTray();
+  }
+  
   // Cerrar servidores si es necesario
   if (apiHttpServer) {
     apiHttpServer.close(() => {
