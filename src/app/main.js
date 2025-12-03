@@ -22,9 +22,13 @@ const GroqAPIServer = require('../mcp/groq-api-server');
 const variablesLoader = require('../utils/variables-loader');
 const HeyGenTokenService = require('../services/heygen-token-service');
 const { LoggerFactory } = require('../utils/logger');
+const { MetricsFactory, globalMetrics } = require('../utils/metrics');
 
 // Inicializar logger estructurado
 const logger = LoggerFactory.create({ service: 'electron-main' });
+
+// Inicializar métricas
+const metrics = MetricsFactory.create({ service: 'electron-main' });
 
 // Cargar variables desde qwen-valencia.env (archivo único, sin conflictos)
 logger.info('Cargando variables desde qwen-valencia.env');
@@ -231,6 +235,10 @@ function startAPIServer() {
  * Handler para routing de mensajes
  */
 ipcMain.handle('route-message', async (event, params) => {
+  const startTime = Date.now();
+  const model = params.model || params.options?.model || 'unknown';
+  const useAPI = params.useAPI !== undefined ? params.useAPI : true;
+  
   try {
     if (!modelRouter) {
       throw new Error('Model Router no inicializado');
@@ -240,8 +248,6 @@ ipcMain.handle('route-message', async (event, params) => {
     const text = params.text || params;
     const modality = params.modality || 'text';
     const attachments = params.attachments || [];
-    const model = params.model;
-    const useAPI = params.useAPI !== undefined ? params.useAPI : true;
     const options = params.options || {};
     
     // Si se especifica un modelo, agregarlo a options
@@ -251,9 +257,21 @@ ipcMain.handle('route-message', async (event, params) => {
     }
     
     const result = await modelRouter.route(text, modality, attachments, options);
+    
+    // Registrar métricas de éxito
+    const duration = Date.now() - startTime;
+    metrics.increment('route_message_success', { model, useAPI: useAPI.toString(), modality });
+    metrics.observe('route_message_duration_ms', { model, useAPI: useAPI.toString() }, duration);
+    
     return result;
   } catch (error) {
+    const duration = Date.now() - startTime;
     logger.error('Error en route-message', { error: error.message, stack: error.stack });
+    
+    // Registrar métricas de error
+    metrics.increment('route_message_errors', { model, useAPI: useAPI.toString() });
+    metrics.observe('route_message_error_duration_ms', { model }, duration);
+    
     return {
       success: false,
       error: error.message
@@ -792,21 +810,183 @@ ipcMain.handle('get-mcp-master-status', async (event) => {
  * Handler para obtener memoria del sistema (RAM real)
  */
 ipcMain.handle('get-system-memory', async (event) => {
+  const startTime = Date.now();
   try {
     const totalBytes = os.totalmem();
     const freeBytes = os.freemem();
     const usedBytes = totalBytes - freeBytes;
     
-    return {
+    const memoryInfo = {
       total: totalBytes / (1024 * 1024), // MB
       free: freeBytes / (1024 * 1024),   // MB
       used: usedBytes / (1024 * 1024),   // MB
       available: freeBytes / (1024 * 1024), // MB (alias de free)
       percentage: (usedBytes / totalBytes) * 100
     };
+    
+    // Registrar métrica
+    metrics.observe('system_memory_used_mb', {}, memoryInfo.used);
+    metrics.observe('system_memory_percentage', {}, memoryInfo.percentage);
+    metrics.increment('system_memory_requests', {});
+    
+    return memoryInfo;
   } catch (error) {
     logger.error('Error obteniendo memoria del sistema', { error: error.message, stack: error.stack });
+    metrics.increment('system_memory_errors', {});
     return null;
+  } finally {
+    const duration = Date.now() - startTime;
+    metrics.observe('system_memory_request_duration_ms', {}, duration);
+  }
+});
+
+/**
+ * Handler para obtener métricas de performance
+ */
+ipcMain.handle('get-performance-metrics', async (event) => {
+  try {
+    const metricsData = {
+      counters: {},
+      gauges: {},
+      histograms: {},
+      uptime: (Date.now() - metrics.startTime) / 1000,
+      timestamp: Date.now()
+    };
+    
+    // Obtener métricas del collector global
+    const jsonMetrics = globalMetrics.getJSONFormat();
+    return {
+      success: true,
+      metrics: jsonMetrics,
+      prometheus: globalMetrics.getPrometheusFormat()
+    };
+  } catch (error) {
+    logger.error('Error obteniendo métricas de performance', { error: error.message });
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// STATE SYNCHRONIZATION - Sincronización de Estado Frontend-Backend
+// ════════════════════════════════════════════════════════════════════════════
+
+// Estado compartido entre frontend y backend
+let sharedState = {
+  model: null,
+  useAPI: true,
+  mode: 'auto',
+  lastUpdate: Date.now(),
+  version: '1.0.0'
+};
+
+/**
+ * Handler para obtener estado compartido desde el backend
+ */
+ipcMain.handle('get-shared-state', async (event) => {
+  try {
+    return {
+      success: true,
+      state: { ...sharedState },
+      timestamp: Date.now()
+    };
+  } catch (error) {
+    logger.error('Error obteniendo estado compartido', { error: error.message });
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+});
+
+/**
+ * Handler para actualizar estado compartido desde el frontend
+ */
+ipcMain.handle('update-shared-state', async (event, updates) => {
+  try {
+    if (!updates || typeof updates !== 'object') {
+      throw new Error('Updates debe ser un objeto');
+    }
+    
+    // Actualizar estado compartido
+    sharedState = {
+      ...sharedState,
+      ...updates,
+      lastUpdate: Date.now()
+    };
+    
+    // Notificar a otros procesos si es necesario
+    if (mainWindow) {
+      mainWindow.webContents.send('shared-state-updated', sharedState);
+    }
+    
+    logger.debug('Estado compartido actualizado', { updates, state: sharedState });
+    
+    return {
+      success: true,
+      state: { ...sharedState }
+    };
+  } catch (error) {
+    logger.error('Error actualizando estado compartido', { error: error.message });
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+});
+
+/**
+ * Handler para sincronizar estado completo (bidireccional)
+ */
+ipcMain.handle('sync-state', async (event, frontendState) => {
+  try {
+    // Merge inteligente: backend tiene prioridad para ciertos campos
+    const mergedState = {
+      ...frontendState,
+      ...sharedState,
+      // Mantener valores del backend para campos críticos
+      model: sharedState.model || frontendState?.model,
+      useAPI: sharedState.useAPI !== undefined ? sharedState.useAPI : frontendState?.useAPI,
+      lastUpdate: Date.now()
+    };
+    
+    // Actualizar estado compartido
+    sharedState = mergedState;
+    
+    // Notificar al frontend
+    if (mainWindow) {
+      mainWindow.webContents.send('state-synced', mergedState);
+    }
+    
+    return {
+      success: true,
+      state: { ...mergedState }
+    };
+  } catch (error) {
+    logger.error('Error sincronizando estado', { error: error.message });
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+});
+
+/**
+ * Listener para cambios de estado desde el frontend
+ */
+ipcMain.on('state-changed', (event, stateUpdate) => {
+  try {
+    sharedState = {
+      ...sharedState,
+      ...stateUpdate,
+      lastUpdate: Date.now()
+    };
+    
+    logger.debug('Estado actualizado desde frontend', { update: stateUpdate });
+  } catch (error) {
+    logger.error('Error procesando cambio de estado', { error: error.message });
   }
 });
 

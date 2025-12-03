@@ -244,6 +244,64 @@ contextBridge.exposeInMainWorld('qwenValencia', {
   },
 
   /**
+   * ════════════════════════════════════════════════════════════════════════════
+   * STATE SYNCHRONIZATION - Sincronización de Estado Frontend-Backend
+   * ════════════════════════════════════════════════════════════════════════════
+   */
+
+  /**
+   * Obtener estado compartido desde el backend
+   */
+  getSharedState: async () => {
+    return await ipcRenderer.invoke('get-shared-state');
+  },
+
+  /**
+   * Actualizar estado compartido en el backend
+   */
+  updateSharedState: async (updates) => {
+    return await ipcRenderer.invoke('update-shared-state', updates);
+  },
+
+  /**
+   * Sincronizar estado completo (bidireccional)
+   */
+  syncState: async (frontendState) => {
+    return await ipcRenderer.invoke('sync-state', frontendState);
+  },
+
+  /**
+   * Enviar cambio de estado al backend
+   */
+  sendStateChange: (stateUpdate) => {
+    ipcRenderer.send('state-changed', stateUpdate);
+  },
+
+  /**
+   * Listeners para eventos de sincronización de estado
+   */
+  onSharedStateUpdated: (callback) => {
+    ipcRenderer.on('shared-state-updated', (event, state) => callback(state));
+  },
+
+  onStateSynced: (callback) => {
+    ipcRenderer.on('state-synced', (event, state) => callback(state));
+  },
+
+  /**
+   * ════════════════════════════════════════════════════════════════════════════
+   * PERFORMANCE MONITORING - Métricas de Performance
+   * ════════════════════════════════════════════════════════════════════════════
+   */
+
+  /**
+   * Obtener métricas de performance
+   */
+  getPerformanceMetrics: async () => {
+    return await ipcRenderer.invoke('get-performance-metrics');
+  },
+
+  /**
    * Controles de ventana
    */
   minimize: () => {

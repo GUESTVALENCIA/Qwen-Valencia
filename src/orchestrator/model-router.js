@@ -13,6 +13,10 @@
 const QwenExecutor = require('../core/qwen-executor');
 const DeepSeekExecutor = require('../core/deepseek-executor');
 
+/**
+ * @typedef {import('../types')} Types
+ */
+
 class ModelRouter {
   constructor(config = {}) {
     this.qwen = new QwenExecutor(config);
@@ -68,6 +72,13 @@ class ModelRouter {
 
   /**
    * Ejecuta una petición usando el modelo apropiado
+   * @param {string} text - Texto del mensaje
+   * @param {string} modality - Modalidad ('text'|'image'|'vision')
+   * @param {Types.ImageAttachment[]} attachments - Attachments (imágenes)
+   * @param {Object} options - Opciones adicionales
+   * @param {Types.ModelId} [options.model] - Modelo específico a usar
+   * @param {boolean} [options.useAPI] - Si usar API o local
+   * @returns {Promise<Types.MessageResponse>} Respuesta del modelo
    */
   async route(text, modality = 'text', attachments = [], options = {}) {
     try {
