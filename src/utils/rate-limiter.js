@@ -110,6 +110,9 @@ class RateLimiter {
    * Middleware para Express
    */
   middleware() {
+    // Capturar 'this' para usar en el closure
+    const rateLimiter = this;
+    
     return (req, res, next) => {
       const key = this.generateKey(req);
       const limitInfo = this.checkLimit(key);

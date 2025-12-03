@@ -16,53 +16,60 @@ const crypto = require('crypto');
 const { RateLimiterFactory } = require('../utils/rate-limiter');
 const { LoggerFactory } = require('../utils/logger');
 const { MetricsFactory } = require('../utils/metrics');
+const { getServiceConfig } = require('../config');
+const SecurityMiddleware = require('../middleware/security');
+const CorrelationMiddleware = require('../middleware/correlation');
+const ValidatorMiddleware = require('../middleware/validator');
+const { setupSwagger } = require('../utils/swagger-setup');
 const path = require('path');
-
-// Cargar desde qwen-valencia.env (archivo único para Qwen-Valencia)
-require('dotenv').config({ path: path.join(__dirname, '..', '..', 'qwen-valencia.env') });
+const os = require('os');
 
 class GroqAPIServer {
   constructor() {
     this.app = express();
-    this.port = process.env.GROQ_API_PORT || 6003;
+    
+    // Cargar configuración centralizada
+    const serviceConfig = getServiceConfig('groq-api-server');
+    this.port = serviceConfig.port || 6003;
     
     // Logger y métricas
     this.logger = LoggerFactory.create('groq-api-server');
     this.metrics = MetricsFactory.create('groq_api');
     
-    // Cargar múltiples API keys (separadas por comas)
-    const groqKeys = process.env.GROQ_API_KEY || '';
-    // Limpiar y procesar API keys usando APIKeyCleaner
+    // Cargar múltiples API keys desde configuración
     const APIKeyCleaner = require('../utils/api-key-cleaner');
-    this.apiKeys = groqKeys.split(',')
+    this.apiKeys = serviceConfig.apiKeys
       .map(k => {
         const cleaned = APIKeyCleaner.cleanAndValidateGroq(k);
-        return cleaned.valid ? cleaned.cleaned : cleaned.cleaned; // Usar limpia aunque no sea válida
+        return cleaned.valid ? cleaned.cleaned : cleaned.cleaned;
       })
       .filter(k => k && k.length > 0);
     
     if (this.apiKeys.length === 0) {
-      console.warn('⚠️ No se encontraron GROQ_API_KEY en .env.pro');
+      this.logger.warn('No se encontraron GROQ_API_KEY en configuración');
     } else {
       this.logger.info(`${this.apiKeys.length} API Key(s) de Groq cargada(s) y limpiada(s)`);
     }
     
     // Rotación de keys
     this.currentKeyIndex = 0;
-    this.keyUsageCount = new Map(); // Contador de uso por key
-    this.keyBlockedUntil = new Map(); // Timestamp de bloqueo por key
-    this.maxRequestsPerKey = 4; // Máximo de requests antes de rotar (menos de 5 para evitar bloqueo)
-    this.blockDuration = 60000; // 1 minuto de bloqueo si una key falla
+    this.keyUsageCount = new Map();
+    this.keyBlockedUntil = new Map();
+    this.maxRequestsPerKey = serviceConfig.maxRequestsPerKey || 4;
+    this.blockDuration = serviceConfig.blockDuration || 60000;
     
     // Cache inteligente
     this.cache = new Map();
-    this.maxCacheSize = 100;
-    this.cacheTTL = 300000; // 5 minutos
+    this.maxCacheSize = serviceConfig.cache?.maxSize || 100;
+    this.cacheTTL = serviceConfig.cache?.ttl || 300000;
     
     // Rate limiting
     this.requestQueue = [];
-    this.maxConcurrentRequests = 3;
+    this.maxConcurrentRequests = serviceConfig.maxConcurrentRequests || 3;
     this.currentRequests = 0;
+    
+    // Servidor HTTP
+    this.server = null;
     
     // Modelos disponibles en Groq (actualizados 2025)
     // Prioridad: Qwen y DeepSeek (modelos principales de la app)
@@ -98,35 +105,82 @@ class GroqAPIServer {
     
     this.setupMiddleware();
     this.setupRoutes();
+    this.setupSwagger();
     
     // Limpieza periódica de cache
     setInterval(() => this.cleanCache(), 300000); // Cada 5 minutos
     
-    console.log('✅ Groq API Server inicializado');
-    console.log(`📡 Puerto: ${this.port}`);
-    console.log(`🔑 API Keys configuradas: ${this.apiKeys.length}`);
+    this.logger.info('Groq API Server inicializado', {
+      port: this.port,
+      apiKeysCount: this.apiKeys.length
+    });
+  }
+  
+  /**
+   * Configurar Swagger UI para documentación OpenAPI
+   */
+  setupSwagger() {
+    try {
+      setupSwagger(this.app);
+      this.logger.info('Swagger UI configurado en /api/docs');
+    } catch (error) {
+      this.logger.warn('No se pudo configurar Swagger UI', { error: error.message });
+    }
   }
   
   setupMiddleware() {
+    const serviceConfig = getServiceConfig('groq-api-server');
+    
+    // Body parser
     this.app.use(express.json({ limit: '50mb' }));
+    
+    // Correlation IDs (debe ir primero para propagar en todos los logs)
+    const correlationMiddleware = CorrelationMiddleware.create();
+    this.app.use(correlationMiddleware.middleware());
+    
+    // Security middleware
+    const securityMiddleware = SecurityMiddleware.create({
+      enableHelmet: serviceConfig.security?.enableHelmet !== false,
+      corsOrigin: serviceConfig.security?.corsOrigin || '*',
+      corsCredentials: serviceConfig.security?.corsCredentials !== false,
+      corsMethods: ['GET', 'POST', 'OPTIONS'],
+      corsHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Correlation-ID'],
+      trustProxy: serviceConfig.security?.trustProxy || false
+    });
+    this.app.use(securityMiddleware.middleware());
     
     // Rate limiting avanzado
     this.rateLimiter = RateLimiterFactory.standard({
-      windowMs: 60000, // 1 minuto
-      maxRequests: 100, // 100 requests por minuto
+      windowMs: serviceConfig.rateLimit?.windowMs || 60000,
+      maxRequests: serviceConfig.rateLimit?.maxRequests || 100,
       keyGenerator: (req) => {
-        // Usar IP o API key si está disponible
         return req.headers['x-api-key'] || req.ip || 'unknown';
       }
     });
     this.app.use(this.rateLimiter.middleware());
     
-    // CORS completo
+    // Validator middleware
+    this.validator = ValidatorMiddleware.create();
+    
+    // Logging de requests con correlation ID
     this.app.use((req, res, next) => {
-      res.header('Access-Control-Allow-Origin', '*');
-      res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-      if (req.method === 'OPTIONS') return res.sendStatus(200);
+      const correlationId = req.correlationId || 'unknown';
+      const start = Date.now();
+      
+      res.on('finish', () => {
+        const duration = Date.now() - start;
+        this.logger.info('Request procesado', {
+          method: req.method,
+          path: req.path,
+          statusCode: res.statusCode,
+          duration: `${duration}ms`,
+          correlationId
+        });
+        
+        // Métricas
+        this.metrics.recordRequest(req.method, req.path, res.statusCode, duration);
+      });
+      
       next();
     });
   }
@@ -302,16 +356,59 @@ class GroqAPIServer {
     // ==================== API V1 (Versionado) ====================
     const v1Router = express.Router();
     
-    // Health check v1
+    // Health check v1 (liveness)
     v1Router.get('/health', (req, res) => {
+      const memUsage = process.memoryUsage();
+      const cpuUsage = process.cpuUsage();
+      
       res.json({
         status: 'healthy',
         service: 'groq-api',
         version: 'v1',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
         apiKeysCount: this.apiKeys.length,
         currentKeyIndex: this.currentKeyIndex,
         cacheSize: this.cache.size,
-        stats: this.stats
+        stats: this.stats,
+        system: {
+          memory: {
+            rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
+            heapTotal: `${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`,
+            heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
+            external: `${Math.round(memUsage.external / 1024 / 1024)}MB`
+          },
+          cpu: {
+            user: `${cpuUsage.user / 1000}ms`,
+            system: `${cpuUsage.system / 1000}ms`
+          },
+          platform: process.platform,
+          nodeVersion: process.version
+        }
+      });
+    });
+    
+    // Health check v1 (readiness)
+    v1Router.get('/health/ready', (req, res) => {
+      const isReady = this.apiKeys.length > 0 && this.server && this.server.listening;
+      res.status(isReady ? 200 : 503).json({
+        ready: isReady,
+        service: 'groq-api',
+        version: 'v1',
+        checks: {
+          apiKeys: this.apiKeys.length > 0,
+          server: this.server && this.server.listening
+        }
+      });
+    });
+    
+    // Health check v1 (liveness)
+    v1Router.get('/health/live', (req, res) => {
+      res.json({
+        alive: true,
+        service: 'groq-api',
+        version: 'v1',
+        pid: process.pid
       });
     });
     
@@ -467,7 +564,8 @@ class GroqAPIServer {
     return new Promise((resolve, reject) => {
       try {
         this.server = this.app.listen(this.port, () => {
-          console.log(`✅ Groq API Server escuchando en puerto ${this.port}`);
+          this.logger.info(`Groq API Server escuchando en puerto ${this.port}`);
+          this.setupGracefulShutdown();
           resolve(true);
         });
         
@@ -488,12 +586,53 @@ class GroqAPIServer {
   }
   
   /**
+   * Configurar graceful shutdown
+   */
+  setupGracefulShutdown() {
+    const shutdown = async (signal) => {
+      this.logger.info(`Recibida señal ${signal}, iniciando cierre graceful...`);
+      
+      // Detener aceptar nuevas conexiones
+      if (this.server) {
+        this.server.close(() => {
+          this.logger.info('Servidor HTTP cerrado');
+        });
+      }
+      
+      // Esperar a que requests en curso terminen (máximo 30 segundos)
+      const maxWait = 30000;
+      const startTime = Date.now();
+      
+      while (this.currentRequests > 0 && (Date.now() - startTime) < maxWait) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      if (this.currentRequests > 0) {
+        this.logger.warn(`${this.currentRequests} requests aún en curso después del timeout`);
+      }
+      
+      // Limpiar recursos
+      this.cache.clear();
+      this.logger.info('Cierre graceful completado');
+      
+      process.exit(0);
+    };
+    
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+  }
+  
+  /**
    * Detener servidor
    */
-  stop() {
+  async stop() {
     if (this.server) {
-      this.server.close();
-      console.log('🛑 Groq API Server detenido');
+      return new Promise((resolve) => {
+        this.server.close(() => {
+          this.logger.info('Groq API Server detenido');
+          resolve();
+        });
+      });
     }
   }
 }
@@ -504,17 +643,6 @@ if (require.main === module) {
   server.start().catch(error => {
     console.error('❌ Error iniciando Groq API Server:', error);
     process.exit(1);
-  });
-  
-  // Manejar cierre graceful
-  process.on('SIGINT', () => {
-    server.stop();
-    process.exit(0);
-  });
-  
-  process.on('SIGTERM', () => {
-    server.stop();
-    process.exit(0);
   });
 }
 

@@ -16,8 +16,13 @@ const { exec } = require('child_process');
 const { promisify } = require('util');
 const fs = require('fs').promises;
 const path = require('path');
-// Cargar desde qwen-valencia.env (archivo único para Qwen-Valencia)
-require('dotenv').config({ path: path.join(__dirname, '..', '..', 'qwen-valencia.env') });
+const { getServiceConfig } = require('../config');
+const { LoggerFactory } = require('../utils/logger');
+const { MetricsFactory } = require('../utils/metrics');
+const SecurityMiddleware = require('../middleware/security');
+const CorrelationMiddleware = require('../middleware/correlation');
+const ValidatorMiddleware = require('../middleware/validator');
+const { setupSwagger } = require('../utils/swagger-setup');
 
 const execAsync = promisify(exec);
 
@@ -26,59 +31,114 @@ class MCPUniversal {
     this.app = express();
     this.server = http.createServer(this.app);
     this.wss = new WebSocketServer({ server: this.server });
-    // Forzar puerto 6000, ignorar variables de entorno viejas
-    this.port = 6000;
+    
+    // Cargar configuración centralizada
+    const serviceConfig = getServiceConfig('mcp-universal');
+    this.port = serviceConfig.port || 6000;
+    
+    // Logger y métricas
+    this.logger = LoggerFactory.create('mcp-universal');
+    this.metrics = MetricsFactory.create('mcp_universal');
     
     this.wsClients = new Set();
     
     this.setupMiddleware();
     this.setupRoutes();
     this.setupWebSocket();
+    this.setupSwagger();
     
-    console.log('✅ MCP Universal Server inicializado (Qwen-Valencia)');
-    console.log(`📡 Puerto: ${this.port}`);
+    this.logger.info('MCP Universal Server inicializado', { port: this.port });
+  }
+  
+  /**
+   * Configurar Swagger UI para documentación OpenAPI
+   */
+  setupSwagger() {
+    try {
+      setupSwagger(this.app);
+      this.logger.info('Swagger UI configurado en /api/docs');
+    } catch (error) {
+      this.logger.warn('No se pudo configurar Swagger UI', { error: error.message });
+    }
   }
 
   setupMiddleware() {
+    const serviceConfig = getServiceConfig('mcp-universal');
+    
+    // Body parser
     this.app.use(express.json({ limit: '50mb' }));
     this.app.use(express.text({ limit: '50mb' }));
     
-    // CORS completo
-    this.app.use((req, res, next) => {
-      res.header('Access-Control-Allow-Origin', '*');
-      res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-secret, X-Requested-With');
-      res.header('Access-Control-Allow-Credentials', 'true');
-      
-      if (req.method === 'OPTIONS') {
-        return res.sendStatus(200);
-      }
-      next();
+    // Correlation IDs
+    const correlationMiddleware = CorrelationMiddleware.create();
+    this.app.use(correlationMiddleware.middleware());
+    
+    // Security middleware
+    const securityMiddleware = SecurityMiddleware.create({
+      enableHelmet: serviceConfig.security?.enableHelmet !== false,
+      corsOrigin: serviceConfig.security?.corsOrigin || '*',
+      corsCredentials: serviceConfig.security?.corsCredentials !== false,
+      corsMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+      corsHeaders: ['Content-Type', 'Authorization', 'mcp-secret', 'X-Requested-With', 'X-Correlation-ID'],
+      trustProxy: serviceConfig.security?.trustProxy || false
     });
+    this.app.use(securityMiddleware.middleware());
+    
+    // Validator middleware
+    this.validator = ValidatorMiddleware.create();
     
     // Middleware de autenticación
     this.app.use((req, res, next) => {
-      if (req.path === '/health' || req.path === '/mcp/health') {
+      if (req.path === '/health' || req.path === '/mcp/health' || 
+          req.path === '/health/ready' || req.path === '/health/live') {
         return next();
       }
       
       const secret = req.headers['mcp-secret'] || req.headers['authorization']?.replace('Bearer ', '');
-      const expectedSecret = process.env.MCP_SECRET_KEY || 'qwen_valencia_mcp_secure_2025';
+      const expectedSecret = serviceConfig.secretKey || 'qwen_valencia_mcp_secure_2025';
       
       if (secret !== expectedSecret) {
-        return res.status(403).json({ error: 'Acceso no autorizado. MCP_SECRET_KEY requerido.' });
+        const { APIError } = require('../utils/api-error');
+        const error = APIError.authRequired('MCP_SECRET_KEY requerido');
+        return res.status(error.statusCode).json(error.toJSON());
       }
+      next();
+    });
+    
+    // Logging de requests con correlation ID
+    this.app.use((req, res, next) => {
+      const correlationId = req.correlationId || 'unknown';
+      const start = Date.now();
+      
+      res.on('finish', () => {
+        const duration = Date.now() - start;
+        this.logger.info('Request procesado', {
+          method: req.method,
+          path: req.path,
+          statusCode: res.statusCode,
+          duration: `${duration}ms`,
+          correlationId
+        });
+        
+        // Métricas
+        this.metrics.recordRequest(req.method, req.path, res.statusCode, duration);
+      });
+      
       next();
     });
   }
 
   setupRoutes() {
-    // Health check
+    // Health check (liveness)
     this.app.get('/health', (req, res) => {
+      const memUsage = process.memoryUsage();
+      const cpuUsage = process.cpuUsage();
+      
       res.json({
         status: 'healthy',
         protocol: 'mcp-universal',
         version: '1.0.0',
+        timestamp: new Date().toISOString(),
         uptime: process.uptime(),
         capabilities: {
           execute_code: true,
@@ -86,12 +146,51 @@ class MCPUniversal {
           write_file: true,
           list_files: true,
           execute_command: true
+        },
+        system: {
+          memory: {
+            rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
+            heapTotal: `${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`,
+            heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
+            external: `${Math.round(memUsage.external / 1024 / 1024)}MB`
+          },
+          cpu: {
+            user: `${cpuUsage.user / 1000}ms`,
+            system: `${cpuUsage.system / 1000}ms`
+          },
+          platform: process.platform,
+          nodeVersion: process.version
+        },
+        websockets: {
+          activeConnections: this.wsClients.size
         }
       });
     });
 
     this.app.get('/mcp/health', (req, res) => {
       res.json({ status: 'healthy', port: this.port });
+    });
+    
+    // Health check (readiness)
+    this.app.get('/health/ready', (req, res) => {
+      const isReady = this.server && this.server.listening;
+      res.status(isReady ? 200 : 503).json({
+        ready: isReady,
+        service: 'mcp-universal',
+        checks: {
+          server: this.server && this.server.listening,
+          websocket: this.wss && this.wss.clients
+        }
+      });
+    });
+    
+    // Health check (liveness)
+    this.app.get('/health/live', (req, res) => {
+      res.json({
+        alive: true,
+        service: 'mcp-universal',
+        pid: process.pid
+      });
     });
     
     // ==================== PROXY A SERVIDORES DEDICADOS ====================
@@ -462,11 +561,49 @@ class MCPUniversal {
     }
     
     this.server.listen(this.port, () => {
-      console.log(`🚀 MCP Universal Server corriendo en http://localhost:${this.port}`);
-      console.log(`📡 Health check: http://localhost:${this.port}/health`);
+      this.logger.info(`MCP Universal Server corriendo en http://localhost:${this.port}`);
+      this.logger.info(`Health check: http://localhost:${this.port}/health`);
+      this.setupGracefulShutdown();
     });
     
     return true;
+  }
+  
+  /**
+   * Configurar graceful shutdown
+   */
+  setupGracefulShutdown() {
+    const shutdown = async (signal) => {
+      this.logger.info(`Recibida señal ${signal}, iniciando cierre graceful...`);
+      
+      // Cerrar WebSocket server
+      if (this.wss) {
+        this.wss.clients.forEach(client => {
+          if (client.readyState === 1) { // OPEN
+            client.close();
+          }
+        });
+        this.wss.close(() => {
+          this.logger.info('WebSocket server cerrado');
+        });
+      }
+      
+      // Detener aceptar nuevas conexiones HTTP
+      if (this.server) {
+        this.server.close(() => {
+          this.logger.info('Servidor HTTP cerrado');
+        });
+      }
+      
+      // Limpiar recursos
+      this.wsClients.clear();
+      this.logger.info('Cierre graceful completado');
+      
+      process.exit(0);
+    };
+    
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
   }
 }
 

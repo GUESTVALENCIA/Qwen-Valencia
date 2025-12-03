@@ -20,46 +20,60 @@ const EventEmitter = require('events');
 const path = require('path');
 const os = require('os');
 const { RateLimiterFactory } = require('../utils/rate-limiter');
-
-// Cargar desde qwen-valencia.env (archivo único para Qwen-Valencia)
-require('dotenv').config({ path: path.join(__dirname, '..', '..', 'qwen-valencia.env') });
+const { LoggerFactory } = require('../utils/logger');
+const { MetricsFactory } = require('../utils/metrics');
+const { getServiceConfig } = require('../config');
+const SecurityMiddleware = require('../middleware/security');
+const CorrelationMiddleware = require('../middleware/correlation');
+const ValidatorMiddleware = require('../middleware/validator');
+const { setupSwagger } = require('../utils/swagger-setup');
 
 class OllamaMCPServer extends EventEmitter {
   constructor() {
     super();
     this.app = express();
-    this.port = process.env.OLLAMA_MCP_PORT || 6002;
+    
+    // Cargar configuración centralizada
+    const serviceConfig = getServiceConfig('ollama-mcp-server');
+    this.port = serviceConfig.port || 6002;
+    
+    // Logger y métricas
+    this.logger = LoggerFactory.create('ollama-mcp-server');
+    this.metrics = MetricsFactory.create('ollama_api');
     
     // Configuración de Ollama
-    this.ollamaUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+    this.ollamaUrl = serviceConfig.baseUrl || 'http://localhost:11434';
     
     // Cache de modelos disponibles
     this.availableModels = [];
     this.modelsCacheTime = 0;
-    this.modelsCacheTTL = 60000; // 1 minuto
-    this.ollamaTimeout = 300000; // 5 minutos
+    this.modelsCacheTTL = serviceConfig.modelsCacheTTL || 60000;
+    this.ollamaTimeout = serviceConfig.timeout || 300000;
     
     // Pool de conexiones HTTP persistentes
     this.httpAgent = new http.Agent({
       keepAlive: true,
       keepAliveMsecs: 30000,
-      maxSockets: 10, // Reducido para no saturar
+      maxSockets: 10,
       maxFreeSockets: 5,
       timeout: 60000
     });
     
     // Cache inteligente
     this.cache = new Map();
-    this.maxCacheSize = 200;
-    this.cacheTTL = 1800000; // 30 minutos
+    this.maxCacheSize = serviceConfig.cache?.maxSize || 200;
+    this.cacheTTL = serviceConfig.cache?.ttl || 1800000;
     
     // Streams activos
     this.activeStreams = new Map();
     
     // Queue de requests con prioridades
     this.requestQueue = [];
-    this.maxConcurrentRequests = 2; // Limitar requests concurrentes
+    this.maxConcurrentRequests = serviceConfig.maxConcurrentRequests || 2;
     this.currentRequests = 0;
+    
+    // Servidor HTTP
+    this.server = null;
     
     // Estadísticas
     this.stats = {
@@ -77,13 +91,27 @@ class OllamaMCPServer extends EventEmitter {
     
     this.setupMiddleware();
     this.setupRoutes();
+    this.setupSwagger();
     
     // Limpieza periódica de cache
     setInterval(() => this.cleanCache(), 600000); // Cada 10 minutos
     
-    console.log('✅ Ollama MCP Server inicializado');
-    console.log(`📡 Puerto: ${this.port}`);
-    console.log(`🔗 Ollama URL: ${this.ollamaUrl}`);
+    this.logger.info('Ollama MCP Server inicializado', {
+      port: this.port,
+      ollamaUrl: this.ollamaUrl
+    });
+  }
+  
+  /**
+   * Configurar Swagger UI para documentación OpenAPI
+   */
+  setupSwagger() {
+    try {
+      setupSwagger(this.app);
+      this.logger.info('Swagger UI configurado en /api/docs');
+    } catch (error) {
+      this.logger.warn('No se pudo configurar Swagger UI', { error: error.message });
+    }
   }
   
   /**
@@ -118,31 +146,45 @@ class OllamaMCPServer extends EventEmitter {
   }
   
   setupMiddleware() {
+    const serviceConfig = getServiceConfig('ollama-mcp-server');
+    
+    // Body parser
     this.app.use(express.json({ limit: '50mb' }));
     this.app.use(express.text({ limit: '50mb' }));
     
+    // Correlation IDs
+    const correlationMiddleware = CorrelationMiddleware.create();
+    this.app.use(correlationMiddleware.middleware());
+    
+    // Security middleware
+    const securityMiddleware = SecurityMiddleware.create({
+      enableHelmet: serviceConfig.security?.enableHelmet !== false,
+      corsOrigin: serviceConfig.security?.corsOrigin || '*',
+      corsCredentials: serviceConfig.security?.corsCredentials !== false,
+      corsMethods: ['GET', 'POST', 'OPTIONS'],
+      corsHeaders: ['Content-Type', 'Authorization', 'mcp-secret', 'X-Correlation-ID'],
+      trustProxy: serviceConfig.security?.trustProxy || false
+    });
+    this.app.use(securityMiddleware.middleware());
+    
     // Rate limiting avanzado (más permisivo para Ollama local)
     this.rateLimiter = RateLimiterFactory.standard({
-      windowMs: 60000, // 1 minuto
-      maxRequests: 200, // 200 requests por minuto (más permisivo)
+      windowMs: serviceConfig.rateLimit?.windowMs || 60000,
+      maxRequests: serviceConfig.rateLimit?.maxRequests || 200,
       keyGenerator: (req) => {
         return req.ip || 'unknown';
       }
     });
     this.app.use(this.rateLimiter.middleware());
     
-    // CORS completo
-    this.app.use((req, res, next) => {
-      res.header('Access-Control-Allow-Origin', '*');
-      res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-secret');
-      if (req.method === 'OPTIONS') return res.sendStatus(200);
-      next();
-    });
+    // Validator middleware
+    this.validator = ValidatorMiddleware.create();
     
-    // Logging de requests
+    // Logging de requests con correlation ID
     this.app.use((req, res, next) => {
+      const correlationId = req.correlationId || 'unknown';
       const start = Date.now();
+      
       res.on('finish', () => {
         const duration = Date.now() - start;
         this.stats.responseTimes.push(duration);
@@ -151,22 +193,84 @@ class OllamaMCPServer extends EventEmitter {
         }
         this.stats.avgResponseTime = 
           this.stats.responseTimes.reduce((a, b) => a + b, 0) / this.stats.responseTimes.length;
+        
+        this.logger.info('Request procesado', {
+          method: req.method,
+          path: req.path,
+          statusCode: res.statusCode,
+          duration: `${duration}ms`,
+          correlationId
+        });
+        
+        // Métricas
+        this.metrics.recordRequest(req.method, req.path, res.statusCode, duration);
       });
+      
       next();
     });
   }
   
   setupRoutes() {
-    // Health check
+    // Health check (liveness)
     this.app.get('/ollama/health', (req, res) => {
+      const memUsage = process.memoryUsage();
+      const cpuUsage = process.cpuUsage();
+      
       res.json({
         status: 'healthy',
         service: 'ollama-mcp',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
         ollamaUrl: this.ollamaUrl,
         activeStreams: this.activeStreams.size,
         cacheSize: this.cache.size,
         currentRequests: this.currentRequests,
-        stats: this.stats
+        stats: this.stats,
+        system: {
+          memory: {
+            rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
+            heapTotal: `${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`,
+            heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
+            external: `${Math.round(memUsage.external / 1024 / 1024)}MB`
+          },
+          cpu: {
+            user: `${cpuUsage.user / 1000}ms`,
+            system: `${cpuUsage.system / 1000}ms`
+          },
+          platform: process.platform,
+          nodeVersion: process.version
+        }
+      });
+    });
+    
+    // Health check (readiness)
+    this.app.get('/ollama/health/ready', async (req, res) => {
+      // Verificar conexión con Ollama
+      let ollamaAvailable = false;
+      try {
+        const response = await axios.get(`${this.ollamaUrl}/api/tags`, { timeout: 5000 });
+        ollamaAvailable = response.status === 200;
+      } catch (error) {
+        ollamaAvailable = false;
+      }
+      
+      const isReady = ollamaAvailable && this.server && this.server.listening;
+      res.status(isReady ? 200 : 503).json({
+        ready: isReady,
+        service: 'ollama-mcp',
+        checks: {
+          ollama: ollamaAvailable,
+          server: this.server && this.server.listening
+        }
+      });
+    });
+    
+    // Health check (liveness)
+    this.app.get('/ollama/health/live', (req, res) => {
+      res.json({
+        alive: true,
+        service: 'ollama-mcp',
+        pid: process.pid
       });
     });
     
@@ -537,15 +641,16 @@ class OllamaMCPServer extends EventEmitter {
     return new Promise((resolve, reject) => {
       try {
         this.server = this.app.listen(this.port, () => {
-          console.log(`✅ Ollama MCP Server escuchando en puerto ${this.port}`);
+          this.logger.info(`Ollama MCP Server escuchando en puerto ${this.port}`);
+          this.setupGracefulShutdown();
           resolve(true);
         });
         
         this.server.on('error', (error) => {
           if (error.code === 'EADDRINUSE') {
-            console.error(`❌ Puerto ${this.port} ya está en uso`);
-            console.error(`💡 Intenta detener el proceso que usa el puerto ${this.port}`);
-            console.error(`💡 O ejecuta: DETENER_TODO.bat`);
+            this.logger.error(`Puerto ${this.port} ya está en uso`, null, {
+              suggestion: `Intenta detener el proceso que usa el puerto ${this.port}`
+            });
             reject(false);
           } else {
             reject(error);
@@ -558,12 +663,70 @@ class OllamaMCPServer extends EventEmitter {
   }
   
   /**
+   * Configurar graceful shutdown
+   */
+  setupGracefulShutdown() {
+    const shutdown = async (signal) => {
+      this.logger.info(`Recibida señal ${signal}, iniciando cierre graceful...`);
+      
+      // Detener aceptar nuevas conexiones
+      if (this.server) {
+        this.server.close(() => {
+          this.logger.info('Servidor HTTP cerrado');
+        });
+      }
+      
+      // Cerrar streams activos
+      for (const [streamId, stream] of this.activeStreams.entries()) {
+        try {
+          if (stream.destroy) {
+            stream.destroy();
+          }
+        } catch (error) {
+          this.logger.warn(`Error cerrando stream ${streamId}`, { error: error.message });
+        }
+      }
+      this.activeStreams.clear();
+      
+      // Esperar a que requests en curso terminen (máximo 30 segundos)
+      const maxWait = 30000;
+      const startTime = Date.now();
+      
+      while (this.currentRequests > 0 && (Date.now() - startTime) < maxWait) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      if (this.currentRequests > 0) {
+        this.logger.warn(`${this.currentRequests} requests aún en curso después del timeout`);
+      }
+      
+      // Cerrar pool de conexiones HTTP
+      if (this.httpAgent) {
+        this.httpAgent.destroy();
+      }
+      
+      // Limpiar recursos
+      this.cache.clear();
+      this.logger.info('Cierre graceful completado');
+      
+      process.exit(0);
+    };
+    
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+  }
+  
+  /**
    * Detener servidor
    */
-  stop() {
+  async stop() {
     if (this.server) {
-      this.server.close();
-      console.log('🛑 Ollama MCP Server detenido');
+      return new Promise((resolve) => {
+        this.server.close(() => {
+          this.logger.info('Ollama MCP Server detenido');
+          resolve();
+        });
+      });
     }
   }
 }
@@ -574,17 +737,6 @@ if (require.main === module) {
   server.start().catch(error => {
     console.error('❌ Error iniciando Ollama MCP Server:', error);
     process.exit(1);
-  });
-  
-  // Manejar cierre graceful
-  process.on('SIGINT', () => {
-    server.stop();
-    process.exit(0);
-  });
-  
-  process.on('SIGTERM', () => {
-    server.stop();
-    process.exit(0);
   });
 }
 

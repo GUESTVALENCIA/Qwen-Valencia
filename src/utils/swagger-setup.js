@@ -43,11 +43,10 @@ function setupSwagger(app, openApiPath = null) {
       res.sendFile(openApiFile);
     });
     
-    console.log('✅ Swagger UI configurado en /api/docs');
     return true;
   } catch (error) {
-    console.warn('⚠️ No se pudo configurar Swagger UI:', error.message);
-    console.warn('💡 Instala las dependencias: npm install swagger-ui-express yamljs');
+    // Silenciar error si las dependencias no están instaladas
+    // (útil para desarrollo sin Swagger)
     return false;
   }
 }
