@@ -19,7 +19,19 @@ class StateManager {
     
     // FIX: Crear copia profunda del estado inicial antes de congelarlo
     // Esto evita problemas si initialState ya está congelado o tiene objetos anidados congelados
-    const initialStateCopy = this.deepCopy(initialState);
+    // FIX: Manejar referencias circulares de forma elegante sin fallar el constructor
+    let initialStateCopy;
+    try {
+      initialStateCopy = this.deepCopy(initialState);
+    } catch (error) {
+      // Si hay referencias circulares, usar un estado vacío y loguear el error
+      // Esto previene que el constructor falle completamente durante el startup
+      this.logger.warn('Estado inicial contiene referencias circulares, usando estado vacío', {
+        error: error.message,
+        initialStateKeys: Object.keys(initialState || {})
+      });
+      initialStateCopy = {};
+    }
     this.state = this.deepFreeze(initialStateCopy);
     this.observers = new Map();
     this.middleware = [];
