@@ -55,8 +55,12 @@ class StateManager {
   /**
    * Deep freeze para hacer objetos completamente inmutables
    * FIX: Excluye funciones, Date, Map, Set y otros objetos built-in que no deben congelarse
+   * FIX: Maneja referencias circulares usando WeakSet para rastrear objetos visitados
+   * @param {*} obj - Objeto a congelar
+   * @param {WeakSet} visited - Set de objetos ya visitados (para detectar referencias circulares)
+   * @returns {*} Objeto congelado
    */
-  deepFreeze(obj) {
+  deepFreeze(obj, visited = new WeakSet()) {
     if (!this.enableImmutable) {
       return obj;
     }
@@ -65,6 +69,16 @@ class StateManager {
     if (obj === null || typeof obj !== 'object') {
       return obj;
     }
+
+    // FIX: Detectar referencias circulares
+    if (visited.has(obj)) {
+      // Retornar el objeto sin congelar para evitar stack overflow
+      this.logger.warn('Referencia circular detectada en deepFreeze, omitiendo congelamiento');
+      return obj;
+    }
+
+    // Marcar objeto como visitado antes de procesarlo
+    visited.add(obj);
 
     // FIX: No congelar objetos built-in especiales que tienen contratos de mutabilidad
     // Date, Map, Set, WeakMap, WeakSet, RegExp, etc. no deben congelarse
@@ -104,7 +118,7 @@ class StateManager {
               value instanceof RegExp ||
               value instanceof Error ||
               value instanceof Promise)) {
-          this.deepFreeze(value);
+          this.deepFreeze(value, visited);
         }
       }
     });
@@ -123,24 +137,39 @@ class StateManager {
 
   /**
    * Deep copy para mantener inmutabilidad
+   * FIX: Maneja referencias circulares usando WeakSet para rastrear objetos visitados
+   * @param {*} obj - Objeto a copiar
+   * @param {WeakSet} visited - Set de objetos ya visitados (para detectar referencias circulares)
+   * @returns {*} Copia profunda del objeto
    */
-  deepCopy(obj) {
+  deepCopy(obj, visited = new WeakSet()) {
     if (obj === null || typeof obj !== 'object') {
       return obj;
     }
+
+    // FIX: Detectar referencias circulares
+    if (visited.has(obj)) {
+      // Retornar null para referencias circulares (evita stack overflow)
+      // Alternativa: retornar el objeto mismo si se quiere preservar la referencia
+      this.logger.warn('Referencia circular detectada en deepCopy, retornando null');
+      return null;
+    }
+
+    // Marcar objeto como visitado antes de procesarlo
+    visited.add(obj);
 
     if (obj instanceof Date) {
       return new Date(obj.getTime());
     }
 
     if (Array.isArray(obj)) {
-      return obj.map(item => this.deepCopy(item));
+      return obj.map(item => this.deepCopy(item, visited));
     }
 
     const copy = {};
     for (const key in obj) {
       if (Object.prototype.hasOwnProperty.call(obj, key)) {
-        copy[key] = this.deepCopy(obj[key]);
+        copy[key] = this.deepCopy(obj[key], visited);
       }
     }
 
