@@ -20,7 +20,7 @@ const ALLOWED_CHANNELS = {
     'get-performance-metrics',
     'get-mcp-master-status'
   ],
-  
+
   // Canales de escritura (con validación estricta)
   write: [
     'route-message',
@@ -30,7 +30,7 @@ const ALLOWED_CHANNELS = {
     'update-shared-state',
     'sync-state'
   ],
-  
+
   // Canales de control (validación media)
   control: [
     'start-conversation',
@@ -42,44 +42,24 @@ const ALLOWED_CHANNELS = {
     'start-mcp-master',
     'stop-mcp-master'
   ],
-  
+
   // Canales de ventana (validación básica)
-  window: [
-    'window-minimize',
-    'window-maximize',
-    'window-close',
-    'create-floating-avatar-window'
-  ],
-  
+  window: ['window-minimize', 'window-maximize', 'window-close', 'create-floating-avatar-window'],
+
   // Canales de audio/TTS (validación media)
-  media: [
-    'generate-speech',
-    'cartesia-tts',
-    'transcribe-audio',
-    'deepgram-transcribe'
-  ],
-  
+  media: ['generate-speech', 'cartesia-tts', 'transcribe-audio', 'deepgram-transcribe'],
+
   // Canales de laboratorio (validación alta)
-  lab: [
-    'execute-in-lab'
-  ],
-  
+  lab: ['execute-in-lab'],
+
   // Canales de terminal (validación media)
-  terminal: [
-    'create-terminal',
-    'get-available-terminals'
-  ],
-  
+  terminal: ['create-terminal', 'get-available-terminals'],
+
   // Canales de multi-ventana (validación básica)
-  multiWindow: [
-    'create-window',
-    'get-windows'
-  ],
-  
+  multiWindow: ['create-window', 'get-windows'],
+
   // Canales de lazy loading (validación media)
-  lazy: [
-    'load-lazy-module'
-  ]
+  lazy: ['load-lazy-module']
 };
 
 // Rate limiting por canal
@@ -124,34 +104,34 @@ function checkRateLimit(channel, senderId) {
   if (!channelType) {
     return { allowed: false, reason: 'Channel not allowed' };
   }
-  
+
   const maxRequests = RATE_LIMIT_MAX[channelType] || 10;
   const key = `${channel}:${senderId}`;
   const now = Date.now();
-  
+
   if (!rateLimitMap.has(key)) {
     rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
     return { allowed: true };
   }
-  
+
   const limit = rateLimitMap.get(key);
-  
+
   // Reset si la ventana expiró
   if (now > limit.resetAt) {
     limit.count = 1;
     limit.resetAt = now + RATE_LIMIT_WINDOW;
     return { allowed: true };
   }
-  
+
   // Verificar límite
   if (limit.count >= maxRequests) {
-    return { 
-      allowed: false, 
+    return {
+      allowed: false,
       reason: 'Rate limit exceeded',
       resetAt: limit.resetAt
     };
   }
-  
+
   limit.count++;
   return { allowed: true };
 }
@@ -165,7 +145,7 @@ function validateOrigin(event) {
   if (!event.sender || !event.sender.getURL) {
     return false;
   }
-  
+
   const url = event.sender.getURL();
   // Validar que viene del archivo local o de la app
   return url.startsWith('file://') || url.includes('qwen-valencia');
@@ -184,7 +164,7 @@ function validateIPC(channel, handler) {
         error: 'Channel not allowed'
       };
     }
-    
+
     // Validar origen
     if (!validateOrigin(event)) {
       logger.warn('Intento de acceso desde origen no válido', { channel });
@@ -193,17 +173,17 @@ function validateIPC(channel, handler) {
         error: 'Invalid origin'
       };
     }
-    
+
     // Verificar rate limiting
     const senderId = event.sender.id || 'unknown';
     const rateLimit = checkRateLimit(channel, senderId);
-    
+
     if (!rateLimit.allowed) {
-      logger.warn('Rate limit excedido', { 
-        channel, 
+      logger.warn('Rate limit excedido', {
+        channel,
         senderId,
         reason: rateLimit.reason,
-        resetAt: rateLimit.resetAt 
+        resetAt: rateLimit.resetAt
       });
       return {
         success: false,
@@ -211,15 +191,15 @@ function validateIPC(channel, handler) {
         resetAt: rateLimit.resetAt
       };
     }
-    
+
     // Ejecutar handler
     try {
       return await handler(event, ...args);
     } catch (error) {
-      logger.error('Error en handler IPC', { 
-        channel, 
+      logger.error('Error en handler IPC', {
+        channel,
         error: error.message,
-        stack: error.stack 
+        stack: error.stack
       });
       throw error;
     }
@@ -249,4 +229,3 @@ module.exports = {
   validateOrigin,
   ALLOWED_CHANNELS
 };
-
