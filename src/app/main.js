@@ -1392,7 +1392,7 @@ ipcMain.handle(
         /data:text\/html/i, // Prevenir data URLs anidadas
         /vbscript:/i
       ];
-      
+
       for (const pattern of dangerousPatterns) {
         if (pattern.test(videoSrc)) {
           throw new Error('videoSrc contiene contenido peligroso');
@@ -1413,24 +1413,24 @@ ipcMain.handle(
           contextIsolation: true
         }
       });
-      
+
       // FIX: Construir el HTML de forma segura sin doble encoding
       // Escapar comillas simples en videoSrc para prevenir inyección en atributo HTML
       // Luego codificar TODO el HTML con encodeURIComponent (incluyendo el videoSrc escapado)
       // Esto evita doble encoding: primero escapamos comillas, luego codificamos todo el HTML
       const escapedVideoSrc = videoSrc.replace(/'/g, '&#039;');
-      
-      const htmlContent = 
+
+      const htmlContent =
         '<html><body style="margin:0;background:transparent;">' +
         `<video src='${escapedVideoSrc}' autoplay playsinline ` +
         'style="width:100%;height:100%;object-fit:contain;"></video>' +
         '</body></html>';
-      
+
       // FIX: Agregar charset=UTF-8 al data URL como requiere Electron
       // Codificar TODO el HTML (incluyendo el videoSrc) con encodeURIComponent
       // Esto codifica el videoSrc una sola vez, evitando doble encoding
       const safeHTML = `data:text/html;charset=UTF-8,${encodeURIComponent(htmlContent)}`;
-      
+
       avatarWindow.loadURL(safeHTML);
 
       return {
@@ -1953,13 +1953,15 @@ async function loadLazyModule(moduleName, forceReload = false) {
             mcpServer = null;
             lazyModules.mcpServer = null;
           } catch (e) {
-            logger.error('Error crítico deteniendo mcpServer, abortando recarga', { 
+            logger.error('Error crítico deteniendo mcpServer, abortando recarga', {
               error: e.message,
               stack: e.stack
             });
             // FIX: Si falla al detener, NO limpiar referencias para evitar instancias duplicadas
             // Lanzar error para que el caller sepa que la recarga falló
-            throw new Error(`No se puede recargar mcpServer: error al detener servidor existente: ${e.message}`);
+            throw new Error(
+              `No se puede recargar mcpServer: error al detener servidor existente: ${e.message}`
+            );
           }
         } else {
           lazyModules.mcpServer = null;
@@ -1972,12 +1974,14 @@ async function loadLazyModule(moduleName, forceReload = false) {
             ollamaMcpServer = null;
             lazyModules.ollamaMcpServer = null;
           } catch (e) {
-            logger.error('Error crítico deteniendo ollamaMcpServer, abortando recarga', { 
+            logger.error('Error crítico deteniendo ollamaMcpServer, abortando recarga', {
               error: e.message,
               stack: e.stack
             });
             // FIX: Si falla al detener, NO limpiar referencias para evitar instancias duplicadas
-            throw new Error(`No se puede recargar ollamaMcpServer: error al detener servidor existente: ${e.message}`);
+            throw new Error(
+              `No se puede recargar ollamaMcpServer: error al detener servidor existente: ${e.message}`
+            );
           }
         } else {
           lazyModules.ollamaMcpServer = null;
@@ -1990,12 +1994,14 @@ async function loadLazyModule(moduleName, forceReload = false) {
             groqApiServer = null;
             lazyModules.groqApiServer = null;
           } catch (e) {
-            logger.error('Error crítico deteniendo groqApiServer, abortando recarga', { 
+            logger.error('Error crítico deteniendo groqApiServer, abortando recarga', {
               error: e.message,
               stack: e.stack
             });
             // FIX: Si falla al detener, NO limpiar referencias para evitar instancias duplicadas
-            throw new Error(`No se puede recargar groqApiServer: error al detener servidor existente: ${e.message}`);
+            throw new Error(
+              `No se puede recargar groqApiServer: error al detener servidor existente: ${e.message}`
+            );
           }
         } else {
           lazyModules.groqApiServer = null;
@@ -2011,7 +2017,7 @@ async function loadLazyModule(moduleName, forceReload = false) {
         break;
     }
   }
-  
+
   if (lazyModules[moduleName] && !forceReload) {
     return lazyModules[moduleName];
   }
@@ -2174,6 +2180,26 @@ app.whenReady().then(async () => {
     }
   );
 
+  serviceReconnectionManager.registerService(
+    'sandra-ia-mcp-server',
+    {
+      name: 'Sandra IA MCP Server',
+      url: 'http://localhost:6004'
+    },
+    async () => {
+      const sandraRunning = await checkServerHealth('http://localhost:6004/health');
+      if (!sandraRunning) {
+        logger.info('Reconectando Sandra IA MCP Server');
+        sandraIaMcpServer = new SandraIAMCPServer();
+        await sandraIaMcpServer.start();
+        logger.info('Sandra IA MCP Server reconectado');
+      }
+    },
+    async () => {
+      return await checkServerHealth('http://localhost:6004/health', 3000);
+    }
+  );
+
   // Iniciar health checks de reconexión
   serviceReconnectionManager.startHealthChecks();
   logger.info('Service Reconnection Manager iniciado');
@@ -2184,7 +2210,7 @@ app.whenReady().then(async () => {
   // Cargar servidores en segundo plano (lazy loading mejorado)
   // Solo verificar si están corriendo, no iniciar automáticamente
   startDedicatedServers(true)
-    .then(async ({ ollamaRunning, groqRunning }) => {
+    .then(async ({ ollamaRunning, groqRunning, sandraRunning }) => {
       // Si no están corriendo, intentar conectar con reconexión automática
       if (!ollamaRunning) {
         logger.info('Ollama MCP Server no está corriendo, intentando conectar...');
@@ -2193,6 +2219,10 @@ app.whenReady().then(async () => {
       if (!groqRunning) {
         logger.info('Groq API Server no está corriendo, intentando conectar...');
         await serviceReconnectionManager.connectService('groq-api-server');
+      }
+      if (!sandraRunning) {
+        logger.info('Sandra IA MCP Server no está corriendo, intentando conectar...');
+        await serviceReconnectionManager.connectService('sandra-ia-mcp-server');
       }
     })
     .catch(error => {

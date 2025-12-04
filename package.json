@@ -2,16 +2,17 @@
   "name": "sandra-ia-8.0",
   "version": "8.0.0",
   "description": "Sistema de orquestación multimodal de inteligencia artificial - Sandra IA 8.0",
-  "main": "core/sandra-core/index.js",
+  "main": "src/app/main.js",
   "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
     "test": "node scripts/test-sandra-orchestrator.js",
     "validate": "node scripts/validate-config.js",
     "health": "node scripts/health-check.js",
     "select-subagents": "node scripts/select-sandra-subagents.js",
     "invoke-subagent": "node scripts/invoke-sandra-subagent.js",
     "execute-subagents": "node scripts/execute-sandra-subagents.js",
-    "monitor": "node scripts/start-sandra-monitoring.js",
-    "start": "node scripts/start-sandra-monitoring.js"
+    "monitor": "node scripts/start-sandra-monitoring.js"
   },
   "keywords": [
     "ai",
