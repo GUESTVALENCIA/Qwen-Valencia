@@ -1276,27 +1276,36 @@ ipcMain.handle(
 /**
  * Handler para iniciar sesión de HeyGen Avatar - DESHABILITADO
  */
-ipcMain.handle('heygen-start-session', async event => {
-  // HeyGen deshabilitado temporalmente
-  return {
-    success: false,
-    error: 'HeyGen Avatar deshabilitado temporalmente'
-  };
-});
+ipcMain.handle(
+  'heygen-start-session',
+  validateIPC('heygen-start-session', async event => {
+    // HeyGen deshabilitado temporalmente
+    return {
+      success: false,
+      error: 'HeyGen Avatar deshabilitado temporalmente'
+    };
+  })
+);
 
 /**
  * Handler para detener sesión de HeyGen Avatar - DESHABILITADO
  */
-ipcMain.handle('heygen-stop', async event => {
-  return { success: false, error: 'HeyGen Avatar deshabilitado temporalmente' };
-});
+ipcMain.handle(
+  'heygen-stop',
+  validateIPC('heygen-stop', async event => {
+    return { success: false, error: 'HeyGen Avatar deshabilitado temporalmente' };
+  })
+);
 
 /**
  * Handler para interrumpir avatar de HeyGen - DESHABILITADO
  */
-ipcMain.handle('heygen-interrupt', async event => {
-  return { success: false, error: 'HeyGen Avatar deshabilitado temporalmente' };
-});
+ipcMain.handle(
+  'heygen-interrupt',
+  validateIPC('heygen-interrupt', async event => {
+    return { success: false, error: 'HeyGen Avatar deshabilitado temporalmente' };
+  })
+);
 
 /**
  * Handler para crear ventana flotante de avatar
