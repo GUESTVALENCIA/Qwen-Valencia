@@ -65,9 +65,6 @@ let conversationService; // Servicio de conversación
 let deepgramService; // Instancia global de DeepgramService
 let tray = null;
 
-// Sistema de lazy loading mejorado
-const LazyLoader = require('../utils/lazy-loader');
-
 // Módulos cargados bajo demanda (lazy loading)
 const lazyModules = {
   mcpServer: null,
@@ -1322,23 +1319,8 @@ ipcMain.handle(
         throw new Error('videoSrc debe ser una URL válida');
       }
 
-      // Crear ventana flotante para avatar
-      const { BrowserWindow } = require('electron');
-
-      const avatarWindow = new BrowserWindow({
-        width: 400,
-        height: 600,
-        frame: false,
-        transparent: true,
-        alwaysOnTop: true,
-        webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: true
-        }
-      });
-
-      // FIX: Sanitizar videoSrc para prevenir XSS e inyección de atributos
-      // Validar que no contiene caracteres peligrosos o scripts
+      // FIX: Validar patrones peligrosos ANTES de crear la ventana
+      // Esto previene que se creen ventanas huérfanas si la validación falla
       const dangerousPatterns = [
         /<script/i,
         /javascript:/i,
@@ -1355,24 +1337,35 @@ ipcMain.handle(
           throw new Error('videoSrc contiene contenido peligroso');
         }
       }
+
+      // Crear ventana flotante para avatar (solo después de todas las validaciones)
+      const { BrowserWindow } = require('electron');
+
+      const avatarWindow = new BrowserWindow({
+        width: 400,
+        height: 600,
+        frame: false,
+        transparent: true,
+        alwaysOnTop: true,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true
+        }
+      });
       
       // FIX: Construir el HTML de forma segura sin doble encoding
-      // Solo escapar comillas para uso en atributo HTML (no otros caracteres HTML)
-      // encodeURIComponent ya manejará la codificación URL del HTML completo
-      const escapedVideoSrc = videoSrc
-        .replace(/"/g, '&quot;')  // Solo escapar comillas dobles para atributo HTML
-        .replace(/'/g, '&#039;'); // Solo escapar comillas simples para atributo HTML
-      
-      // Construir HTML seguro y luego codificar todo el data URL
-      // encodeURIComponent codificará todos los caracteres especiales del HTML, incluyendo la URL del video
+      // Usar comillas simples en el atributo src para evitar necesidad de escapar comillas dobles
+      // Luego codificar TODO el HTML con encodeURIComponent (incluyendo el videoSrc)
+      // Esto evita doble encoding: el videoSrc se codifica una sola vez cuando codificamos el HTML completo
       const htmlContent = 
         '<html><body style="margin:0;background:transparent;">' +
-        `<video src="${escapedVideoSrc}" autoplay playsinline ` +
+        `<video src='${videoSrc}' autoplay playsinline ` +
         'style="width:100%;height:100%;object-fit:contain;"></video>' +
         '</body></html>';
       
       // FIX: Agregar charset=UTF-8 al data URL como requiere Electron
-      // Codificar todo el HTML en el data URL (esto codifica la URL del video correctamente)
+      // Codificar TODO el HTML (incluyendo el videoSrc) con encodeURIComponent
+      // Esto codifica el videoSrc una sola vez, evitando doble encoding
       const safeHTML = `data:text/html;charset=UTF-8,${encodeURIComponent(htmlContent)}`;
       
       avatarWindow.loadURL(safeHTML);
