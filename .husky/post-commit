@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Revisión automática de código después de commit
+# Solo se ejecuta si hay cambios en archivos de código
+if [ -f "scripts/auto-code-reviewer.js" ]; then
+  echo ""
+  echo "🔍 Ejecutando revisión automática de código..."
+  node scripts/auto-code-reviewer.js || true
+fi
+

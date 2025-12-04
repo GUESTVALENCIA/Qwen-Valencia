@@ -46,3 +46,9 @@ temp/
 # Archivos protegidos - NO MODIFICAR
 # Estos archivos están protegidos y no deben ser modificados sin autorización
 # .protected/
+
+# Revisión automática de código
+.code-review-last.txt
+
+# Orquestador de subagentes
+.orchestrator-logs/

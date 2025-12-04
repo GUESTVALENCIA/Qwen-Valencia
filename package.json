@@ -27,7 +27,12 @@
     "prebuild": "npm run lint:check && npm run format:check",
     "postinstall": "electron-builder install-app-deps",
     "precommit": "npm run lint:check && npm run format:check",
-    "prepare": "husky"
+    "prepare": "husky",
+    "review": "node scripts/auto-code-reviewer.js",
+    "review:full": "node scripts/auto-code-reviewer.js --full",
+    "orchestrator": "node scripts/start-orchestrator.js",
+    "orchestrator:start": "node scripts/start-orchestrator.js",
+    "monitors:start": "node scripts/start-orchestrator.js"
   },
   "keywords": [
     "qwen",
