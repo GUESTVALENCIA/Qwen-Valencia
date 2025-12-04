@@ -206,12 +206,35 @@ class StateManager {
    * Establece un valor en el estado (inmutable)
    */
   set(key, value, action = 'set') {
-    // Crear copia profunda del estado anterior
-    const previousState = this.deepCopy(this.state);
+    // FIX: Manejar referencias circulares de forma elegante como en el constructor
+    let previousState;
+    let newState;
+    try {
+      // Crear copia profunda del estado anterior
+      previousState = this.deepCopy(this.state);
+    } catch (error) {
+      // Si hay referencias circulares, usar estado vacío como fallback
+      this.logger.warn('Estado contiene referencias circulares en set(), usando estado vacío como previousState', {
+        error: error.message,
+        key
+      });
+      previousState = {};
+    }
 
-    // FIX: Crear copia profunda no congelada del estado actual
-    // Usar deepCopy en lugar de spread operator para evitar que objetos anidados sigan congelados
-    const newState = this.deepCopy(this.state);
+    try {
+      // FIX: Crear copia profunda no congelada del estado actual
+      // Usar deepCopy en lugar de spread operator para evitar que objetos anidados sigan congelados
+      newState = this.deepCopy(this.state);
+    } catch (error) {
+      // Si hay referencias circulares, lanzar error más descriptivo
+      const errorMsg = `No se puede actualizar estado: contiene referencias circulares. Key: ${key}`;
+      this.logger.error(errorMsg, {
+        error: error.message,
+        key,
+        valueType: typeof value
+      });
+      throw new Error(errorMsg);
+    }
     newState[key] = value;
 
     // Ejecutar middleware
@@ -261,13 +284,36 @@ class StateManager {
    * Actualiza múltiples valores a la vez (inmutable)
    */
   update(updates, action = 'update') {
-    // Crear copia profunda del estado anterior
-    const previousState = this.deepCopy(this.state);
+    // FIX: Manejar referencias circulares de forma elegante como en el constructor
+    let previousState;
+    let newState;
     const changes = {};
+    
+    try {
+      // Crear copia profunda del estado anterior
+      previousState = this.deepCopy(this.state);
+    } catch (error) {
+      // Si hay referencias circulares, usar estado vacío como fallback
+      this.logger.warn('Estado contiene referencias circulares en update(), usando estado vacío como previousState', {
+        error: error.message,
+        updateKeys: Object.keys(updates || {})
+      });
+      previousState = {};
+    }
 
-    // FIX: Crear copia profunda no congelada del estado actual
-    // Usar deepCopy en lugar de spread operator para evitar que objetos anidados sigan congelados
-    const newState = this.deepCopy(this.state);
+    try {
+      // FIX: Crear copia profunda no congelada del estado actual
+      // Usar deepCopy en lugar de spread operator para evitar que objetos anidados sigan congelados
+      newState = this.deepCopy(this.state);
+    } catch (error) {
+      // Si hay referencias circulares, lanzar error más descriptivo
+      const errorMsg = `No se puede actualizar estado: contiene referencias circulares. Updates: ${Object.keys(updates || {}).join(', ')}`;
+      this.logger.error(errorMsg, {
+        error: error.message,
+        updateKeys: Object.keys(updates || {})
+      });
+      throw new Error(errorMsg);
+    }
     for (const [key, value] of Object.entries(updates)) {
       newState[key] = value;
       changes[key] = { from: previousState[key], to: value };
