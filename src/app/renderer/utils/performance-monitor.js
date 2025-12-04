@@ -25,8 +25,15 @@ class PerformanceMonitor {
     this.measureMemory();
     
     // Medir memoria periódicamente
+    // FIX: Usar ResourceCleanupManager para prevenir memory leaks
     if (typeof window !== 'undefined' && window.qwenValencia) {
-      setInterval(() => this.measureMemory(), 30000); // Cada 30 segundos
+      const cleanupManager = window.resourceCleanup || window.getResourceCleanupManager?.();
+      if (cleanupManager) {
+        this.memoryIntervalId = cleanupManager.setInterval(() => this.measureMemory(), 30000); // Cada 30 segundos
+      } else {
+        // Fallback si ResourceCleanupManager no está disponible
+        this.memoryIntervalId = setInterval(() => this.measureMemory(), 30000);
+      }
     }
   }
 

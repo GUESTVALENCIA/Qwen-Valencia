@@ -2193,6 +2193,16 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   app.isQuiting = true;
 
+  // FIX: Cerrar todas las ventanas antes de salir para prevenir memory leaks
+  // Esto asegura que todas las ventanas (incluyendo flotantes) se cierren correctamente
+  windows.forEach((window, id) => {
+    if (window && !window.isDestroyed()) {
+      logger.info(`Cerrando ventana: ${id}`);
+      window.destroy();
+    }
+  });
+  windows.clear();
+
   // Destruir system tray
   if (tray) {
     destroyTray();
