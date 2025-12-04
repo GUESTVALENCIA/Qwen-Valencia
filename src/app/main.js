@@ -2,10 +2,10 @@
  * ════════════════════════════════════════════════════════════════════════════
  * QWEN-VALENCIA - ELECTRON MAIN PROCESS
  * ════════════════════════════════════════════════════════════════════════════
- * 
+ *
  * Aplicación Electron básica y limpia para Qwen + DeepSeek
  * Sin contaminación descriptiva - Solo ejecución real
- * 
+ *
  * ════════════════════════════════════════════════════════════════════════════
  */
 
@@ -53,7 +53,7 @@ const store = new Store({
 });
 
 let mainWindow;
-let windows = new Map(); // Gestión multi-ventana
+const windows = new Map(); // Gestión multi-ventana
 let mcpServer;
 let modelRouter;
 let ollamaMcpServer;
@@ -99,7 +99,7 @@ async function startDedicatedServers(lazy = false) {
     const groqRunning = await checkServerHealth('http://localhost:6003/groq/health');
     return { ollamaRunning, groqRunning };
   }
-  
+
   // Verificar Ollama MCP Server (puerto 6002)
   const ollamaRunning = await checkServerHealth('http://localhost:6002/ollama/health');
   if (!ollamaRunning) {
@@ -108,7 +108,7 @@ async function startDedicatedServers(lazy = false) {
       ollamaMcpServer = new OllamaMCPServer();
       await ollamaMcpServer.start();
       logger.info('Ollama MCP Server iniciado exitosamente');
-      
+
       // Registrar servicio en service registry
       globalServiceRegistry.register({
         name: 'ollama-mcp-server',
@@ -130,7 +130,7 @@ async function startDedicatedServers(lazy = false) {
     }
   } else {
     logger.info('Ollama MCP Server ya está corriendo');
-    
+
     // Registrar servicio existente
     globalServiceRegistry.register({
       name: 'ollama-mcp-server',
@@ -147,7 +147,7 @@ async function startDedicatedServers(lazy = false) {
       tags: ['mcp', 'ollama', 'local']
     });
   }
-  
+
   // Verificar Groq API Server (puerto 6003)
   const groqRunning = await checkServerHealth('http://localhost:6003/groq/health');
   if (!groqRunning) {
@@ -156,7 +156,7 @@ async function startDedicatedServers(lazy = false) {
       groqApiServer = new GroqAPIServer();
       await groqApiServer.start();
       logger.info('Groq API Server iniciado exitosamente');
-      
+
       // Registrar servicio en service registry
       globalServiceRegistry.register({
         name: 'groq-api-server',
@@ -178,7 +178,7 @@ async function startDedicatedServers(lazy = false) {
     }
   } else {
     logger.info('Groq API Server ya está corriendo');
-    
+
     // Registrar servicio existente
     globalServiceRegistry.register({
       name: 'groq-api-server',
@@ -204,19 +204,19 @@ async function startMCPServer() {
   try {
     // Asegurar que el puerto esté disponible
     const port = await ensureMCPServerPort();
-    
+
     mcpServer = new MCPUniversal();
     const started = await mcpServer.start();
-    
+
     if (started) {
       logger.info('MCP Server iniciado exitosamente', { port });
-      
+
       // Registrar servicio en service registry
       globalServiceRegistry.register({
         name: 'mcp-universal',
         version: '1.0.0',
         host: 'localhost',
-        port: port,
+        port,
         protocol: 'http',
         healthEndpoint: '/health',
         metadata: {
@@ -228,7 +228,7 @@ async function startMCPServer() {
     } else {
       logger.warn('MCP Server no pudo iniciar (puerto ocupado)');
       logger.warn('La aplicación continuará, pero algunas funciones pueden no estar disponibles');
-      
+
       // Intentar con puerto alternativo
       const altPort = await findAvailablePort(port + 1);
       if (altPort) {
@@ -250,7 +250,7 @@ function createWindow() {
   // Restaurar posición y tamaño guardados
   const windowBounds = store.get('windowBounds');
   const wasMaximized = store.get('windowMaximized');
-  
+
   mainWindow = new BrowserWindow({
     width: windowBounds.width || 1200,
     height: windowBounds.height || 800,
@@ -278,7 +278,7 @@ function createWindow() {
   // Mostrar ventana cuando esté lista
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
-    
+
     // Enfocar la ventana
     if (process.platform === 'darwin') {
       app.dock.show();
@@ -318,7 +318,7 @@ function createWindow() {
   });
 
   // Prevenir cierre si hay trabajo pendiente (opcional)
-  mainWindow.on('close', (event) => {
+  mainWindow.on('close', event => {
     // En macOS, mantener la app corriendo aunque se cierre la ventana
     if (process.platform === 'darwin') {
       if (!app.isQuiting) {
@@ -553,10 +553,10 @@ function createApplicationMenu() {
  */
 async function findAvailablePort(startPort, maxAttempts = 10) {
   const net = require('net');
-  
+
   for (let i = 0; i < maxAttempts; i++) {
     const port = startPort + i;
-    const available = await new Promise((resolve) => {
+    const available = await new Promise(resolve => {
       const server = net.createServer();
       server.listen(port, () => {
         server.once('close', () => resolve(true));
@@ -564,12 +564,12 @@ async function findAvailablePort(startPort, maxAttempts = 10) {
       });
       server.on('error', () => resolve(false));
     });
-    
+
     if (available) {
       return port;
     }
   }
-  
+
   return null;
 }
 
@@ -578,15 +578,15 @@ async function findAvailablePort(startPort, maxAttempts = 10) {
  */
 async function ensureMCPServerPort() {
   const configuredPort = parseInt(process.env.MCP_PORT || '6000', 10);
-  
+
   // Verificar si el puerto está ocupado
   const availablePort = await findAvailablePort(configuredPort);
-  
+
   if (availablePort !== configuredPort) {
     logger.warn(`Puerto MCP ${configuredPort} ocupado, usando puerto ${availablePort}`);
     process.env.MCP_PORT = availablePort.toString();
   }
-  
+
   return availablePort || configuredPort;
 }
 
@@ -599,17 +599,21 @@ function initializeModelRouter() {
   if (groqApiKey) {
     // Limpiar API key: eliminar espacios, comillas, saltos de línea, caracteres de control
     // eslint-disable-next-line no-control-regex
-    groqApiKey = groqApiKey.trim().replace(/['"]/g, '').replace(/\s+/g, '').replace(/[\x00-\x1F\x7F-\x9F]/g, '');
-    
+    groqApiKey = groqApiKey
+      .trim()
+      .replace(/['"]/g, '')
+      .replace(/\s+/g, '')
+      .replace(/[\x00-\x1F\x7F-\x9F]/g, '');
+
     // Validar formato básico
     if (groqApiKey.length < 20) {
-      logger.error('GROQ_API_KEY demasiado corta', { 
-        length: groqApiKey.length, 
-        preview: groqApiKey.substring(0, 20) 
+      logger.error('GROQ_API_KEY demasiado corta', {
+        length: groqApiKey.length,
+        preview: groqApiKey.substring(0, 20)
       });
     } else if (!groqApiKey.startsWith('gsk_')) {
-      logger.error('GROQ_API_KEY no tiene el formato correcto', { 
-        preview: groqApiKey.substring(0, 10) 
+      logger.error('GROQ_API_KEY no tiene el formato correcto', {
+        preview: groqApiKey.substring(0, 10)
       });
     } else {
       logger.info('API Key de Groq cargada y limpiada', { length: groqApiKey.length });
@@ -617,15 +621,15 @@ function initializeModelRouter() {
   } else {
     logger.warn('GROQ_API_KEY no encontrada');
   }
-  
+
   modelRouter = new ModelRouter({
-    groqApiKey: groqApiKey,
+    groqApiKey,
     ollamaUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
     mode: process.env.MODE || 'auto',
     mcpBaseUrl: `http://localhost:${process.env.MCP_PORT || 6000}`,
     mcpSecret: process.env.MCP_SECRET_KEY || 'qwen_valencia_mcp_secure_2025'
   });
-  
+
   logger.info('Model Router inicializado');
 }
 
@@ -636,12 +640,11 @@ function startAPIServer() {
   try {
     apiServer = express();
     apiServer.use(express.json());
-    
+
     // CORS mejorado - Enterprise Level (solo permitir orígenes específicos)
-    const allowedOrigins = process.env.NODE_ENV === 'development' 
-      ? ['http://localhost:*', 'file://*']
-      : ['file://*'];
-    
+    const allowedOrigins =
+      process.env.NODE_ENV === 'development' ? ['http://localhost:*', 'file://*'] : ['file://*'];
+
     apiServer.use((req, res, next) => {
       const origin = req.headers.origin;
       // En desarrollo, permitir localhost; en producción solo file://
@@ -715,16 +718,52 @@ function startAPIServer() {
       res.json(spans);
     });
 
+    // API Gateway - Endpoint agregado (modelo + estado + health en una llamada)
+    apiServer.get('/api/v1/aggregated', async (req, res) => {
+      try {
+        const startTime = Date.now();
+
+        // Obtener todos los datos en paralelo
+        const [servicesStats, healthData, tracerStats] = await Promise.all([
+          Promise.resolve(globalServiceRegistry.getStats()),
+          globalHealthAggregator.aggregateHealth(),
+          Promise.resolve(globalTracer.getStats())
+        ]);
+
+        const duration = Date.now() - startTime;
+
+        // Respuesta agregada
+        const aggregated = {
+          success: true,
+          timestamp: new Date().toISOString(),
+          duration,
+          data: {
+            services: servicesStats,
+            health: healthData,
+            tracing: tracerStats
+          }
+        };
+
+        res.json(aggregated);
+      } catch (error) {
+        logger.error('Error en endpoint agregado', { error: error.message });
+        res.status(500).json({
+          success: false,
+          error: error.message
+        });
+      }
+    });
+
     const port = 3000; // Puerto para el servidor de API
     apiHttpServer = apiServer.listen(port, () => {
       logger.info('API Server escuchando', { port });
-      
+
       // Registrar API Server en service registry
       globalServiceRegistry.register({
         name: 'qwen-valencia-api',
         version: '1.0.0',
         host: 'localhost',
-        port: port,
+        port,
         protocol: 'http',
         healthEndpoint: '/api/health',
         metadata: {
@@ -747,448 +786,496 @@ function startAPIServer() {
 /**
  * Handler para routing de mensajes (con validación IPC)
  */
-ipcMain.handle('route-message', validateIPC('route-message', async (event, params) => {
-  const startTime = Date.now();
-  const model = params.model || params.options?.model || 'unknown';
-  const useAPI = params.useAPI !== undefined ? params.useAPI : true;
-  
-  try {
-    if (!modelRouter) {
-      throw new Error('Model Router no inicializado');
+ipcMain.handle(
+  'route-message',
+  validateIPC('route-message', async (event, params) => {
+    const startTime = Date.now();
+    const model = params.model || params.options?.model || 'unknown';
+    const useAPI = params.useAPI !== undefined ? params.useAPI : true;
+
+    try {
+      if (!modelRouter) {
+        throw new Error('Model Router no inicializado');
+      }
+
+      // Compatibilidad con ambas firmas
+      const text = params.text || params;
+      const modality = params.modality || 'text';
+      const attachments = params.attachments || [];
+      const options = params.options || {};
+
+      // Si se especifica un modelo, agregarlo a options
+      if (model) {
+        options.model = model;
+        options.useAPI = useAPI;
+      }
+
+      const result = await modelRouter.route(text, modality, attachments, options);
+
+      // Registrar métricas de éxito
+      const duration = Date.now() - startTime;
+      metrics.increment('route_message_success', { model, useAPI: useAPI.toString(), modality });
+      metrics.observe('route_message_duration_ms', { model, useAPI: useAPI.toString() }, duration);
+
+      return result;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      logger.error('Error en route-message', { error: error.message, stack: error.stack });
+
+      // Registrar métricas de error
+      metrics.increment('route_message_errors', { model, useAPI: useAPI.toString() });
+      metrics.observe('route_message_error_duration_ms', { model }, duration);
+
+      return {
+        success: false,
+        error: error.message
+      };
     }
-    
-    // Compatibilidad con ambas firmas
-    const text = params.text || params;
-    const modality = params.modality || 'text';
-    const attachments = params.attachments || [];
-    const options = params.options || {};
-    
-    // Si se especifica un modelo, agregarlo a options
-    if (model) {
-      options.model = model;
-      options.useAPI = useAPI;
-    }
-    
-    const result = await modelRouter.route(text, modality, attachments, options);
-    
-    // Registrar métricas de éxito
-    const duration = Date.now() - startTime;
-    metrics.increment('route_message_success', { model, useAPI: useAPI.toString(), modality });
-    metrics.observe('route_message_duration_ms', { model, useAPI: useAPI.toString() }, duration);
-    
-    return result;
-  } catch (error) {
-    const duration = Date.now() - startTime;
-    logger.error('Error en route-message', { error: error.message, stack: error.stack });
-    
-    // Registrar métricas de error
-    metrics.increment('route_message_errors', { model, useAPI: useAPI.toString() });
-    metrics.observe('route_message_error_duration_ms', { model }, duration);
-    
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+  })
+);
 
 /**
  * Handler para ejecutar código (con validación IPC)
  */
-ipcMain.handle('execute-code', validateIPC('execute-code', async (event, { language, code }) => {
-  try {
-    if (!modelRouter) {
-      throw new Error('Model Router no inicializado');
+ipcMain.handle(
+  'execute-code',
+  validateIPC('execute-code', async (event, { language, code }) => {
+    try {
+      if (!modelRouter) {
+        throw new Error('Model Router no inicializado');
+      }
+
+      const result = await modelRouter.executeCode(language, code);
+      return result;
+    } catch (error) {
+      logger.error('Error ejecutando código', { error: error.message, stack: error.stack });
+      return {
+        success: false,
+        error: error.message
+      };
     }
-    
-    const result = await modelRouter.executeCode(language, code);
-    return result;
-  } catch (error) {
-    logger.error('Error ejecutando código', { error: error.message, stack: error.stack });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+  })
+);
 
 /**
  * Handler para leer archivo (con validación IPC)
  */
-ipcMain.handle('read-file', validateIPC('read-file', async (event, { filePath }) => {
-  try {
-    if (!modelRouter) {
-      throw new Error('Model Router no inicializado');
+ipcMain.handle(
+  'read-file',
+  validateIPC('read-file', async (event, { filePath }) => {
+    try {
+      if (!modelRouter) {
+        throw new Error('Model Router no inicializado');
+      }
+
+      const result = await modelRouter.readFile(filePath);
+      return result;
+    } catch (error) {
+      logger.error('Error leyendo archivo', { error: error.message, stack: error.stack });
+      return {
+        success: false,
+        error: error.message
+      };
     }
-    
-    const result = await modelRouter.readFile(filePath);
-    return result;
-  } catch (error) {
-    logger.error('Error leyendo archivo', { error: error.message, stack: error.stack });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+  })
+);
 
 /**
  * Handler para listar archivos (con validación IPC)
  */
-ipcMain.handle('list-files', validateIPC('list-files', async (event, { dirPath }) => {
-  try {
-    if (!modelRouter) {
-      throw new Error('Model Router no inicializado');
+ipcMain.handle(
+  'list-files',
+  validateIPC('list-files', async (event, { dirPath }) => {
+    try {
+      if (!modelRouter) {
+        throw new Error('Model Router no inicializado');
+      }
+
+      const result = await modelRouter.listFiles(dirPath);
+      return result;
+    } catch (error) {
+      logger.error('Error listando archivos', { error: error.message, stack: error.stack });
+      return {
+        success: false,
+        error: error.message
+      };
     }
-    
-    const result = await modelRouter.listFiles(dirPath);
-    return result;
-  } catch (error) {
-    logger.error('Error listando archivos', { error: error.message, stack: error.stack });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+  })
+);
 
 /**
  * Handler para generar audio con Cartesia TTS (con validación IPC)
  */
-ipcMain.handle('generate-speech', validateIPC('generate-speech', async (event, { text, options = {} }) => {
-  try {
-    const CartesiaService = require('../services/cartesia-service');
-    const cartesia = new CartesiaService();
-    
-    const result = await cartesia.generateSpeech(text, {
-      voiceId: process.env.CARTESIA_VOICE_ID || options.voiceId,
-      speed: options.speed || 0.78,
-      emotion: options.emotion || [{ id: 'warm', strength: 0.6 }]
-    });
-    
-    if (result.success && result.audioBuffer) {
-      // Convertir buffer a base64 para enviar al renderer
+ipcMain.handle(
+  'generate-speech',
+  validateIPC('generate-speech', async (event, { text, options = {} }) => {
+    try {
+      const CartesiaService = require('../services/cartesia-service');
+      const cartesia = new CartesiaService();
+
+      const result = await cartesia.generateSpeech(text, {
+        voiceId: process.env.CARTESIA_VOICE_ID || options.voiceId,
+        speed: options.speed || 0.78,
+        emotion: options.emotion || [{ id: 'warm', strength: 0.6 }]
+      });
+
+      if (result.success && result.audioBuffer) {
+        // Convertir buffer a base64 para enviar al renderer
+        return {
+          success: true,
+          audioBuffer: result.audioBuffer.buffer // ArrayBuffer para transferencia
+        };
+      }
+
       return {
-        success: true,
-        audioBuffer: result.audioBuffer.buffer // ArrayBuffer para transferencia
+        success: false,
+        error: 'No se pudo generar audio'
+      };
+    } catch (error) {
+      logger.error('Error generando speech', { error: error.message, stack: error.stack });
+      return {
+        success: false,
+        error: error.message
       };
     }
-    
-    return {
-      success: false,
-      error: 'No se pudo generar audio'
-    };
-  } catch (error) {
-    logger.error('Error generando speech', { error: error.message, stack: error.stack });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+  })
+);
 
 /**
  * Handler para Cartesia TTS (compatible con app.js) (con validación IPC)
  */
-ipcMain.handle('cartesia-tts', validateIPC('cartesia-tts', async (event, params) => {
-  try {
-    const CartesiaService = require('../services/cartesia-service');
-    const cartesia = new CartesiaService();
-    
-    const text = params.text || '';
-    const voiceId = params.voiceId || process.env.CARTESIA_VOICE_ID;
-    
-    const result = await cartesia.generateSpeech(text, {
-      voiceId: voiceId,
-      speed: 0.78,
-      emotion: [{ id: 'warm', strength: 0.6 }]
-    });
-    
-    if (result.success && result.audioBuffer) {
-      // Convertir a base64
-      const base64 = result.audioBuffer.toString('base64');
+ipcMain.handle(
+  'cartesia-tts',
+  validateIPC('cartesia-tts', async (event, params) => {
+    try {
+      const CartesiaService = require('../services/cartesia-service');
+      const cartesia = new CartesiaService();
+
+      const text = params.text || '';
+      const voiceId = params.voiceId || process.env.CARTESIA_VOICE_ID;
+
+      const result = await cartesia.generateSpeech(text, {
+        voiceId,
+        speed: 0.78,
+        emotion: [{ id: 'warm', strength: 0.6 }]
+      });
+
+      if (result.success && result.audioBuffer) {
+        // Convertir a base64
+        const base64 = result.audioBuffer.toString('base64');
+        return {
+          success: true,
+          audio: base64,
+          format: 'wav'
+        };
+      }
+
       return {
-        success: true,
-        audio: base64,
-        format: 'wav'
+        success: false,
+        error: 'No se pudo generar audio'
+      };
+    } catch (error) {
+      logger.error('Error en cartesia-tts', { error: error.message, stack: error.stack });
+      return {
+        success: false,
+        error: error.message
       };
     }
-    
-    return {
-      success: false,
-      error: 'No se pudo generar audio'
-    };
-  } catch (error) {
-    logger.error('Error en cartesia-tts', { error: error.message, stack: error.stack });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+  })
+);
 
 /**
  * Handler para ejecutar código en laboratorio de IAs (con validación IPC)
  */
-ipcMain.handle('execute-in-lab', validateIPC('execute-in-lab', async (event, { language, code, options = {} }) => {
-  try {
-    const AILab = require('../lab/ai-lab');
-    const lab = new AILab();
-    
-    const result = await lab.executeCode(language, code, options);
-    return result;
-  } catch (error) {
-    logger.error('Error ejecutando en laboratorio', { error: error.message, stack: error.stack });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+ipcMain.handle(
+  'execute-in-lab',
+  validateIPC('execute-in-lab', async (event, { language, code, options = {} }) => {
+    try {
+      const AILab = require('../lab/ai-lab');
+      const lab = new AILab();
+
+      const result = await lab.executeCode(language, code, options);
+      return result;
+    } catch (error) {
+      logger.error('Error ejecutando en laboratorio', { error: error.message, stack: error.stack });
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  })
+);
 
 /**
  * Handler para transcribir audio (con validación IPC)
  */
-ipcMain.handle('transcribe-audio', validateIPC('transcribe-audio', async (event, { audio, mimeType }) => {
-  // Intentar usar Web Speech API si está disponible
-  // Por ahora, retornar error para que el frontend use Web Speech API directamente
-  return {
-    success: false,
-    error: 'Backend de transcripción no implementado. Usando Web Speech API.'
-  };
-}));
+ipcMain.handle(
+  'transcribe-audio',
+  validateIPC('transcribe-audio', async (event, { audio, mimeType }) => {
+    // Intentar usar Web Speech API si está disponible
+    // Por ahora, retornar error para que el frontend use Web Speech API directamente
+    return {
+      success: false,
+      error: 'Backend de transcripción no implementado. Usando Web Speech API.'
+    };
+  })
+);
 
 /**
  * Handler para transcribir audio con DeepGram
  */
-ipcMain.handle('deepgram-transcribe', validateIPC('deepgram-transcribe', async (event, params) => {
-  try {
-    if (!deepgramService) {
-      const DeepgramService = require('../services/deepgram-service');
-      deepgramService = new DeepgramService();
+ipcMain.handle(
+  'deepgram-transcribe',
+  validateIPC('deepgram-transcribe', async (event, params) => {
+    try {
+      if (!deepgramService) {
+        const DeepgramService = require('../services/deepgram-service');
+        deepgramService = new DeepgramService();
+      }
+
+      const audio = params.audio;
+      const mimeType = params.mimeType || 'audio/webm';
+
+      // Convertir base64 a buffer
+      const audioBuffer = Buffer.from(audio, 'base64');
+
+      const result = await deepgramService.transcribeBuffer(audioBuffer, mimeType);
+
+      return {
+        success: true,
+        transcript: result.transcript || ''
+      };
+    } catch (error) {
+      logger.error('Error en deepgram-transcribe', { error: error.message, stack: error.stack });
+      return {
+        success: false,
+        error: error.message
+      };
     }
-    
-    const audio = params.audio;
-    const mimeType = params.mimeType || 'audio/webm';
-    
-    // Convertir base64 a buffer
-    const audioBuffer = Buffer.from(audio, 'base64');
-    
-    const result = await deepgramService.transcribeBuffer(audioBuffer, mimeType);
-    
-    return {
-      success: true,
-      transcript: result.transcript || ''
-    };
-  } catch (error) {
-    logger.error('Error en deepgram-transcribe', { error: error.message, stack: error.stack });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+  })
+);
 
 /**
  * Handler para iniciar DeepGram Live Transcription
  */
-ipcMain.handle('deepgram-start-live', validateIPC('deepgram-start-live', async (event) => {
-  try {
-    // Lazy loading de deepgramService
-    if (!deepgramService) {
-      await loadLazyModule('deepgramService');
-    }
-    
-    // Si ya hay una conexión activa, detenerla primero
-    if (deepgramService.isConnected) {
-      deepgramService.stopLiveTranscription();
-    }
-    
-    // Iniciar transcripción en vivo (solo si está habilitado)
-    if (!deepgramService.enabled) {
+ipcMain.handle(
+  'deepgram-start-live',
+  validateIPC('deepgram-start-live', async event => {
+    try {
+      // Lazy loading de deepgramService
+      if (!deepgramService) {
+        await loadLazyModule('deepgramService');
+      }
+
+      // Si ya hay una conexión activa, detenerla primero
+      if (deepgramService.isConnected) {
+        deepgramService.stopLiveTranscription();
+      }
+
+      // Iniciar transcripción en vivo (solo si está habilitado)
+      if (!deepgramService.enabled) {
+        return {
+          success: false,
+          error: 'Deepgram no está habilitado. Verifica DEEPGRAM_API_KEY en qwen-valencia.env'
+        };
+      }
+
+      const result = await deepgramService.startLiveTranscription(
+        data => {
+          if (mainWindow) {
+            mainWindow.webContents.send('deepgram-transcript', data);
+          }
+        },
+        error => {
+          if (mainWindow) {
+            mainWindow.webContents.send('deepgram-error', error);
+          }
+        }
+      );
+
+      return {
+        success: true,
+        connectionId: result.connectionId
+      };
+    } catch (error) {
+      logger.error('Error iniciando DeepGram Live', { error: error.message, stack: error.stack });
       return {
         success: false,
-        error: 'Deepgram no está habilitado. Verifica DEEPGRAM_API_KEY en qwen-valencia.env'
+        error: error.message
       };
     }
-    
-    const result = await deepgramService.startLiveTranscription((data) => {
-      if (mainWindow) {
-        mainWindow.webContents.send('deepgram-transcript', data);
-      }
-    }, (error) => {
-      if (mainWindow) {
-        mainWindow.webContents.send('deepgram-error', error);
-      }
-    });
-    
-    return {
-      success: true,
-      connectionId: result.connectionId
-    };
-  } catch (error) {
-    logger.error('Error iniciando DeepGram Live', { error: error.message, stack: error.stack });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+  })
+);
 
 /**
  * Handler para detener DeepGram Live Transcription
  */
-ipcMain.handle('deepgram-stop-live', validateIPC('deepgram-stop-live', async (event) => {
-  try {
-    if (deepgramService) {
-      deepgramService.stopLiveTranscription();
+ipcMain.handle(
+  'deepgram-stop-live',
+  validateIPC('deepgram-stop-live', async event => {
+    try {
+      if (deepgramService) {
+        deepgramService.stopLiveTranscription();
+      }
+
+      return {
+        success: true
+      };
+    } catch (error) {
+      logger.error('Error deteniendo DeepGram Live', { error: error.message, stack: error.stack });
+      return {
+        success: false,
+        error: error.message
+      };
     }
-    
-    return {
-      success: true
-    };
-  } catch (error) {
-    logger.error('Error deteniendo DeepGram Live', { error: error.message, stack: error.stack });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+  })
+);
 
 /**
  * Handler para enviar audio a DeepGram Live
  */
-ipcMain.handle('deepgram-send-audio', validateIPC('deepgram-send-audio', async (event, { audio }) => {
-  try {
-    if (!deepgramService) {
+ipcMain.handle(
+  'deepgram-send-audio',
+  validateIPC('deepgram-send-audio', async (event, { audio }) => {
+    try {
+      if (!deepgramService) {
+        return {
+          success: false,
+          error: 'DeepGram Live no está iniciado'
+        };
+      }
+
+      if (!deepgramService.isConnected) {
+        return {
+          success: false,
+          error: 'DeepGram Live no está conectado'
+        };
+      }
+
+      // Convertir base64 a buffer
+      const audioBuffer = Buffer.from(audio, 'base64');
+
+      // Usar el método sendAudio del servicio
+      deepgramService.sendAudio(audioBuffer);
+
+      return {
+        success: true
+      };
+    } catch (error) {
+      logger.error('Error enviando audio a DeepGram', { error: error.message, stack: error.stack });
       return {
         success: false,
-        error: 'DeepGram Live no está iniciado'
+        error: error.message
       };
     }
-    
-    if (!deepgramService.isConnected) {
-      return {
-        success: false,
-        error: 'DeepGram Live no está conectado'
-      };
-    }
-    
-    // Convertir base64 a buffer
-    const audioBuffer = Buffer.from(audio, 'base64');
-    
-    // Usar el método sendAudio del servicio
-    deepgramService.sendAudio(audioBuffer);
-    
-    return {
-      success: true
-    };
-  } catch (error) {
-    logger.error('Error enviando audio a DeepGram', { error: error.message, stack: error.stack });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+  })
+);
 
 /**
  * Handler para iniciar conversación
  */
-ipcMain.handle('start-conversation', validateIPC('start-conversation', async (event, { mode = 'text', userId = null }) => {
-  try {
-    if (!modelRouter) {
-      throw new Error('Model Router no inicializado');
-    }
+ipcMain.handle(
+  'start-conversation',
+  validateIPC('start-conversation', async (event, { mode = 'text', userId = null }) => {
+    try {
+      if (!modelRouter) {
+        throw new Error('Model Router no inicializado');
+      }
 
-    // Lazy loading de conversationService
-    if (!conversationService) {
-      await loadLazyModule('conversationService');
-    }
+      // Lazy loading de conversationService
+      if (!conversationService) {
+        await loadLazyModule('conversationService');
+      }
 
-    const result = await conversationService.startConversation({
-      mode,
-      userId,
-      callbacks: {
-        onTranscriptUpdate: (data) => {
-          if (mainWindow) {
-            mainWindow.webContents.send('conversation-transcript', data);
-          }
-        },
-        onResponseReady: (data) => {
-          if (mainWindow) {
-            mainWindow.webContents.send('conversation-response', data);
-          }
-        },
-        onSessionState: (state) => {
-          if (mainWindow) {
-            mainWindow.webContents.send('conversation-state', state);
-          }
-        },
-        onError: (error) => {
-          if (mainWindow) {
-            mainWindow.webContents.send('conversation-error', { error: error.message });
+      const result = await conversationService.startConversation({
+        mode,
+        userId,
+        callbacks: {
+          onTranscriptUpdate: data => {
+            if (mainWindow) {
+              mainWindow.webContents.send('conversation-transcript', data);
+            }
+          },
+          onResponseReady: data => {
+            if (mainWindow) {
+              mainWindow.webContents.send('conversation-response', data);
+            }
+          },
+          onSessionState: state => {
+            if (mainWindow) {
+              mainWindow.webContents.send('conversation-state', state);
+            }
+          },
+          onError: error => {
+            if (mainWindow) {
+              mainWindow.webContents.send('conversation-error', { error: error.message });
+            }
           }
         }
-      }
-    });
+      });
 
-    return result;
-  } catch (error) {
-    logger.error('Error iniciando conversación', { error: error.message, stack: error.stack });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+      return result;
+    } catch (error) {
+      logger.error('Error iniciando conversación', { error: error.message, stack: error.stack });
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  })
+);
 
 /**
  * Handler para detener conversación (con validación IPC)
  */
-ipcMain.handle('stop-conversation', validateIPC('stop-conversation', async (event) => {
-  try {
-    if (conversationService) {
-      await conversationService.stopConversation();
-      conversationService = null;
+ipcMain.handle(
+  'stop-conversation',
+  validateIPC('stop-conversation', async event => {
+    try {
+      if (conversationService) {
+        await conversationService.stopConversation();
+        conversationService = null;
+      }
+      return { success: true };
+    } catch (error) {
+      logger.error('Error deteniendo conversación', { error: error.message, stack: error.stack });
+      return {
+        success: false,
+        error: error.message
+      };
     }
-    return { success: true };
-  } catch (error) {
-    logger.error('Error deteniendo conversación', { error: error.message, stack: error.stack });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+  })
+);
 
 /**
  * Handler para enviar audio al stream de conversación (con validación IPC)
  */
-ipcMain.handle('send-audio-to-conversation', validateIPC('send-audio-to-conversation', async (event, { audioBuffer }) => {
-  try {
-    if (conversationService) {
-      conversationService.sendAudio(Buffer.from(audioBuffer));
-      return { success: true };
+ipcMain.handle(
+  'send-audio-to-conversation',
+  validateIPC('send-audio-to-conversation', async (event, { audioBuffer }) => {
+    try {
+      if (conversationService) {
+        conversationService.sendAudio(Buffer.from(audioBuffer));
+        return { success: true };
+      }
+      return {
+        success: false,
+        error: 'Conversación no activa'
+      };
+    } catch (error) {
+      logger.error('Error enviando audio', { error: error.message, stack: error.stack });
+      return {
+        success: false,
+        error: error.message
+      };
     }
-    return {
-      success: false,
-      error: 'Conversación no activa'
-    };
-  } catch (error) {
-    logger.error('Error enviando audio', { error: error.message, stack: error.stack });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+  })
+);
 
 /**
  * Handler para iniciar sesión de HeyGen Avatar - DESHABILITADO
  */
-ipcMain.handle('heygen-start-session', async (event) => {
+ipcMain.handle('heygen-start-session', async event => {
   // HeyGen deshabilitado temporalmente
   return {
     success: false,
@@ -1199,118 +1286,133 @@ ipcMain.handle('heygen-start-session', async (event) => {
 /**
  * Handler para detener sesión de HeyGen Avatar - DESHABILITADO
  */
-ipcMain.handle('heygen-stop', async (event) => {
+ipcMain.handle('heygen-stop', async event => {
   return { success: false, error: 'HeyGen Avatar deshabilitado temporalmente' };
 });
 
 /**
  * Handler para interrumpir avatar de HeyGen - DESHABILITADO
  */
-ipcMain.handle('heygen-interrupt', async (event) => {
+ipcMain.handle('heygen-interrupt', async event => {
   return { success: false, error: 'HeyGen Avatar deshabilitado temporalmente' };
 });
 
 /**
  * Handler para crear ventana flotante de avatar
  */
-ipcMain.handle('create-floating-avatar-window', validateIPC('create-floating-avatar-window', async (event, { videoSrc }) => {
-  try {
-    // Validar videoSrc para prevenir XSS
-    if (!videoSrc || typeof videoSrc !== 'string') {
-      throw new Error('videoSrc debe ser una cadena válida');
-    }
-    
-    // Sanitizar videoSrc (solo permitir URLs data: o http/https)
-    if (!videoSrc.startsWith('data:') && !videoSrc.startsWith('http://') && !videoSrc.startsWith('https://')) {
-      throw new Error('videoSrc debe ser una URL válida');
-    }
-    
-    // Crear ventana flotante para avatar
-    const { BrowserWindow } = require('electron');
-    
-    const avatarWindow = new BrowserWindow({
-      width: 400,
-      height: 600,
-      frame: false,
-      transparent: true,
-      alwaysOnTop: true,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true
+ipcMain.handle(
+  'create-floating-avatar-window',
+  validateIPC('create-floating-avatar-window', async (event, { videoSrc }) => {
+    try {
+      // Validar videoSrc para prevenir XSS
+      if (!videoSrc || typeof videoSrc !== 'string') {
+        throw new Error('videoSrc debe ser una cadena válida');
       }
-    });
-    
-    // Escapar videoSrc para prevenir XSS en data URL
-    const escapedVideoSrc = videoSrc.replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-    avatarWindow.loadURL(`data:text/html,<html><body style="margin:0;background:transparent;"><video src="${escapedVideoSrc}" autoplay playsinline style="width:100%;height:100%;object-fit:contain;"></video></body></html>`);
-    
-    return {
-      success: true,
-      windowId: avatarWindow.id
-    };
-  } catch (error) {
-    logger.error('Error creando ventana flotante', { error: error.message, stack: error.stack });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+
+      // Sanitizar videoSrc (solo permitir URLs data: o http/https)
+      if (
+        !videoSrc.startsWith('data:') &&
+        !videoSrc.startsWith('http://') &&
+        !videoSrc.startsWith('https://')
+      ) {
+        throw new Error('videoSrc debe ser una URL válida');
+      }
+
+      // Crear ventana flotante para avatar
+      const { BrowserWindow } = require('electron');
+
+      const avatarWindow = new BrowserWindow({
+        width: 400,
+        height: 600,
+        frame: false,
+        transparent: true,
+        alwaysOnTop: true,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true
+        }
+      });
+
+      // Escapar videoSrc para prevenir XSS en data URL
+      const escapedVideoSrc = videoSrc.replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+      avatarWindow.loadURL(
+        `data:text/html,<html><body style="margin:0;background:transparent;"><video src="${escapedVideoSrc}" autoplay playsinline style="width:100%;height:100%;object-fit:contain;"></video></body></html>`
+      );
+
+      return {
+        success: true,
+        windowId: avatarWindow.id
+      };
+    } catch (error) {
+      logger.error('Error creando ventana flotante', { error: error.message, stack: error.stack });
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  })
+);
 
 /**
  * Handler para iniciar MCP Master Server
  */
-ipcMain.handle('start-mcp-master', validateIPC('start-mcp-master', async (event) => {
-  try {
-    if (mcpServer) {
+ipcMain.handle(
+  'start-mcp-master',
+  validateIPC('start-mcp-master', async event => {
+    try {
+      if (mcpServer) {
+        return {
+          success: true,
+          message: 'MCP Server ya está corriendo'
+        };
+      }
+
+      await startMCPServer();
+
       return {
         success: true,
-        message: 'MCP Server ya está corriendo'
+        message: 'MCP Server iniciado'
+      };
+    } catch (error) {
+      logger.error('Error iniciando MCP Master', { error: error.message, stack: error.stack });
+      return {
+        success: false,
+        error: error.message
       };
     }
-    
-    await startMCPServer();
-    
-    return {
-      success: true,
-      message: 'MCP Server iniciado'
-    };
-  } catch (error) {
-    logger.error('Error iniciando MCP Master', { error: error.message, stack: error.stack });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+  })
+);
 
 /**
  * Handler para detener MCP Master Server
  */
-ipcMain.handle('stop-mcp-master', validateIPC('stop-mcp-master', async (event) => {
-  try {
-    if (mcpServer && mcpServer.server) {
-      mcpServer.server.close();
-      mcpServer = null;
+ipcMain.handle(
+  'stop-mcp-master',
+  validateIPC('stop-mcp-master', async event => {
+    try {
+      if (mcpServer && mcpServer.server) {
+        mcpServer.server.close();
+        mcpServer = null;
+      }
+
+      return {
+        success: true,
+        message: 'MCP Server detenido'
+      };
+    } catch (error) {
+      logger.error('Error deteniendo MCP Master', { error: error.message, stack: error.stack });
+      return {
+        success: false,
+        error: error.message
+      };
     }
-    
-    return {
-      success: true,
-      message: 'MCP Server detenido'
-    };
-  } catch (error) {
-    logger.error('Error deteniendo MCP Master', { error: error.message, stack: error.stack });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+  })
+);
 
 /**
  * Handler para obtener estado de MCP Master Server
  */
-ipcMain.handle('get-mcp-master-status', async (event) => {
+ipcMain.handle('get-mcp-master-status', async event => {
   try {
     return {
       running: mcpServer !== null && mcpServer.server !== null,
@@ -1328,29 +1430,32 @@ ipcMain.handle('get-mcp-master-status', async (event) => {
 /**
  * Handler para obtener memoria del sistema (RAM real)
  */
-ipcMain.handle('get-system-memory', async (event) => {
+ipcMain.handle('get-system-memory', async event => {
   const startTime = Date.now();
   try {
     const totalBytes = os.totalmem();
     const freeBytes = os.freemem();
     const usedBytes = totalBytes - freeBytes;
-    
+
     const memoryInfo = {
       total: totalBytes / (1024 * 1024), // MB
-      free: freeBytes / (1024 * 1024),   // MB
-      used: usedBytes / (1024 * 1024),   // MB
+      free: freeBytes / (1024 * 1024), // MB
+      used: usedBytes / (1024 * 1024), // MB
       available: freeBytes / (1024 * 1024), // MB (alias de free)
       percentage: (usedBytes / totalBytes) * 100
     };
-    
+
     // Registrar métrica
     metrics.observe('system_memory_used_mb', {}, memoryInfo.used);
     metrics.observe('system_memory_percentage', {}, memoryInfo.percentage);
     metrics.increment('system_memory_requests', {});
-    
+
     return memoryInfo;
   } catch (error) {
-    logger.error('Error obteniendo memoria del sistema', { error: error.message, stack: error.stack });
+    logger.error('Error obteniendo memoria del sistema', {
+      error: error.message,
+      stack: error.stack
+    });
     metrics.increment('system_memory_errors', {});
     return null;
   } finally {
@@ -1362,7 +1467,7 @@ ipcMain.handle('get-system-memory', async (event) => {
 /**
  * Handler para obtener métricas de performance
  */
-ipcMain.handle('get-performance-metrics', async (event) => {
+ipcMain.handle('get-performance-metrics', async event => {
   try {
     const metricsData = {
       counters: {},
@@ -1371,7 +1476,7 @@ ipcMain.handle('get-performance-metrics', async (event) => {
       uptime: (Date.now() - metrics.startTime) / 1000,
       timestamp: Date.now()
     };
-    
+
     // Obtener métricas del collector global
     const jsonMetrics = globalMetrics.getJSONFormat();
     return {
@@ -1404,7 +1509,7 @@ let sharedState = {
 /**
  * Handler para obtener estado compartido desde el backend
  */
-ipcMain.handle('get-shared-state', async (event) => {
+ipcMain.handle('get-shared-state', async event => {
   try {
     return {
       success: true,
@@ -1423,74 +1528,80 @@ ipcMain.handle('get-shared-state', async (event) => {
 /**
  * Handler para actualizar estado compartido desde el frontend
  */
-ipcMain.handle('update-shared-state', validateIPC('update-shared-state', async (event, updates) => {
-  try {
-    if (!updates || typeof updates !== 'object') {
-      throw new Error('Updates debe ser un objeto');
+ipcMain.handle(
+  'update-shared-state',
+  validateIPC('update-shared-state', async (event, updates) => {
+    try {
+      if (!updates || typeof updates !== 'object') {
+        throw new Error('Updates debe ser un objeto');
+      }
+
+      // Actualizar estado compartido
+      sharedState = {
+        ...sharedState,
+        ...updates,
+        lastUpdate: Date.now()
+      };
+
+      // Notificar a otros procesos si es necesario
+      if (mainWindow) {
+        mainWindow.webContents.send('shared-state-updated', sharedState);
+      }
+
+      logger.debug('Estado compartido actualizado', { updates, state: sharedState });
+
+      return {
+        success: true,
+        state: { ...sharedState }
+      };
+    } catch (error) {
+      logger.error('Error actualizando estado compartido', { error: error.message });
+      return {
+        success: false,
+        error: error.message
+      };
     }
-    
-    // Actualizar estado compartido
-    sharedState = {
-      ...sharedState,
-      ...updates,
-      lastUpdate: Date.now()
-    };
-    
-    // Notificar a otros procesos si es necesario
-    if (mainWindow) {
-      mainWindow.webContents.send('shared-state-updated', sharedState);
-    }
-    
-    logger.debug('Estado compartido actualizado', { updates, state: sharedState });
-    
-    return {
-      success: true,
-      state: { ...sharedState }
-    };
-  } catch (error) {
-    logger.error('Error actualizando estado compartido', { error: error.message });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+  })
+);
 
 /**
  * Handler para sincronizar estado completo (bidireccional)
  */
-ipcMain.handle('sync-state', validateIPC('sync-state', async (event, frontendState) => {
-  try {
-    // Merge inteligente: backend tiene prioridad para ciertos campos
-    const mergedState = {
-      ...frontendState,
-      ...sharedState,
-      // Mantener valores del backend para campos críticos
-      model: sharedState.model || frontendState?.model,
-      useAPI: sharedState.useAPI !== undefined ? sharedState.useAPI : frontendState?.useAPI,
-      lastUpdate: Date.now()
-    };
-    
-    // Actualizar estado compartido
-    sharedState = mergedState;
-    
-    // Notificar al frontend
-    if (mainWindow) {
-      mainWindow.webContents.send('state-synced', mergedState);
+ipcMain.handle(
+  'sync-state',
+  validateIPC('sync-state', async (event, frontendState) => {
+    try {
+      // Merge inteligente: backend tiene prioridad para ciertos campos
+      const mergedState = {
+        ...frontendState,
+        ...sharedState,
+        // Mantener valores del backend para campos críticos
+        model: sharedState.model || frontendState?.model,
+        useAPI: sharedState.useAPI !== undefined ? sharedState.useAPI : frontendState?.useAPI,
+        lastUpdate: Date.now()
+      };
+
+      // Actualizar estado compartido
+      sharedState = mergedState;
+
+      // Notificar al frontend
+      if (mainWindow) {
+        mainWindow.webContents.send('state-synced', mergedState);
+      }
+
+      return {
+        success: true,
+        state: { ...mergedState }
+      };
+    } catch (error) {
+      logger.error('Error sincronizando estado', { error: error.message });
+      return {
+        success: false,
+        error: error.message
+      };
     }
-    
-    return {
-      success: true,
-      state: { ...mergedState }
-    };
-  } catch (error) {
-    logger.error('Error sincronizando estado', { error: error.message });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+  })
+);
 
 /**
  * Listener para cambios de estado desde el frontend
@@ -1502,7 +1613,7 @@ ipcMain.on('state-changed', (event, stateUpdate) => {
       ...stateUpdate,
       lastUpdate: Date.now()
     };
-    
+
     logger.debug('Estado actualizado desde frontend', { update: stateUpdate });
   } catch (error) {
     logger.error('Error procesando cambio de estado', { error: error.message });
@@ -1512,13 +1623,13 @@ ipcMain.on('state-changed', (event, stateUpdate) => {
 /**
  * Handlers para controles de ventana
  */
-ipcMain.on('window-minimize', (event) => {
+ipcMain.on('window-minimize', event => {
   if (mainWindow) {
     mainWindow.minimize();
   }
 });
 
-ipcMain.on('window-maximize', (event) => {
+ipcMain.on('window-maximize', event => {
   if (mainWindow) {
     if (mainWindow.isMaximized()) {
       mainWindow.unmaximize();
@@ -1528,7 +1639,7 @@ ipcMain.on('window-maximize', (event) => {
   }
 });
 
-ipcMain.on('window-close', (event) => {
+ipcMain.on('window-close', event => {
   if (mainWindow) {
     mainWindow.close();
   }
@@ -1541,21 +1652,24 @@ ipcMain.on('window-close', (event) => {
 /**
  * Handler para crear terminal
  */
-ipcMain.handle('create-terminal', validateIPC('create-terminal', async (event, { type = 'auto', command = null }) => {
-  try {
-    const terminalId = terminalManager.createTerminalWindow(type, command);
-    return {
-      success: true,
-      terminalId
-    };
-  } catch (error) {
-    logger.error('Error creando terminal', { error: error.message, stack: error.stack });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+ipcMain.handle(
+  'create-terminal',
+  validateIPC('create-terminal', async (event, { type = 'auto', command = null }) => {
+    try {
+      const terminalId = terminalManager.createTerminalWindow(type, command);
+      return {
+        success: true,
+        terminalId
+      };
+    } catch (error) {
+      logger.error('Error creando terminal', { error: error.message, stack: error.stack });
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  })
+);
 
 /**
  * Handler para enviar comando a terminal
@@ -1584,7 +1698,7 @@ ipcMain.on('terminal-close', (event, terminalId) => {
 /**
  * Handler para obtener terminales disponibles
  */
-ipcMain.handle('get-available-terminals', async (event) => {
+ipcMain.handle('get-available-terminals', async event => {
   try {
     const terminals = terminalManager.getAvailableTerminals();
     return {
@@ -1609,7 +1723,7 @@ ipcMain.handle('get-available-terminals', async (event) => {
  */
 function createNewWindow(windowType = 'main', options = {}) {
   const windowId = `window-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  
+
   const windowOptions = {
     width: options.width || 1200,
     height: options.height || 800,
@@ -1624,9 +1738,9 @@ function createNewWindow(windowType = 'main', options = {}) {
     show: false,
     ...options
   };
-  
+
   const newWindow = new BrowserWindow(windowOptions);
-  
+
   // Cargar contenido según tipo
   if (windowType === 'main') {
     newWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
@@ -1634,25 +1748,25 @@ function createNewWindow(windowType = 'main', options = {}) {
     // Ventana de configuración (si existe)
     newWindow.loadFile(path.join(__dirname, 'renderer', 'settings.html'));
   }
-  
+
   // Guardar referencia
   windows.set(windowId, {
     window: newWindow,
     type: windowType,
     id: windowId
   });
-  
+
   // Mostrar cuando esté listo
   newWindow.once('ready-to-show', () => {
     newWindow.show();
   });
-  
+
   // Limpiar al cerrar
   newWindow.on('closed', () => {
     windows.delete(windowId);
     logger.info('Ventana cerrada', { windowId, type: windowType });
   });
-  
+
   logger.info('Nueva ventana creada', { windowId, type: windowType });
   return windowId;
 }
@@ -1660,26 +1774,29 @@ function createNewWindow(windowType = 'main', options = {}) {
 /**
  * Handler para crear nueva ventana
  */
-ipcMain.handle('create-window', validateIPC('create-window', async (event, { type = 'main', options = {} }) => {
-  try {
-    const windowId = createNewWindow(type, options);
-    return {
-      success: true,
-      windowId
-    };
-  } catch (error) {
-    logger.error('Error creando ventana', { error: error.message, stack: error.stack });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+ipcMain.handle(
+  'create-window',
+  validateIPC('create-window', async (event, { type = 'main', options = {} }) => {
+    try {
+      const windowId = createNewWindow(type, options);
+      return {
+        success: true,
+        windowId
+      };
+    } catch (error) {
+      logger.error('Error creando ventana', { error: error.message, stack: error.stack });
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  })
+);
 
 /**
  * Handler para obtener todas las ventanas
  */
-ipcMain.handle('get-windows', async (event) => {
+ipcMain.handle('get-windows', async event => {
   try {
     const windowList = Array.from(windows.entries()).map(([id, data]) => ({
       id,
@@ -1687,7 +1804,7 @@ ipcMain.handle('get-windows', async (event) => {
       isVisible: data.window.isVisible(),
       isFocused: data.window.isFocused()
     }));
-    
+
     return {
       success: true,
       windows: windowList
@@ -1712,10 +1829,10 @@ async function loadLazyModule(moduleName) {
   if (lazyModules[moduleName]) {
     return lazyModules[moduleName];
   }
-  
+
   logger.info(`Cargando módulo bajo demanda: ${moduleName}`);
   const startTime = Date.now();
-  
+
   try {
     switch (moduleName) {
       case 'mcpServer':
@@ -1724,21 +1841,21 @@ async function loadLazyModule(moduleName) {
         }
         lazyModules.mcpServer = mcpServer;
         break;
-        
+
       case 'ollamaMcpServer':
         if (!ollamaMcpServer) {
           await startDedicatedServers();
         }
         lazyModules.ollamaMcpServer = ollamaMcpServer;
         break;
-        
+
       case 'groqApiServer':
         if (!groqApiServer) {
           await startDedicatedServers();
         }
         lazyModules.groqApiServer = groqApiServer;
         break;
-        
+
       case 'conversationService':
         if (!conversationService && modelRouter) {
           const ConversationService = require('../services/conversation-service');
@@ -1746,7 +1863,7 @@ async function loadLazyModule(moduleName) {
           lazyModules.conversationService = conversationService;
         }
         break;
-        
+
       case 'deepgramService':
         if (!deepgramService) {
           const DeepgramService = require('../services/deepgram-service');
@@ -1754,17 +1871,20 @@ async function loadLazyModule(moduleName) {
           lazyModules.deepgramService = deepgramService;
         }
         break;
-        
+
       default:
         throw new Error(`Módulo desconocido: ${moduleName}`);
     }
-    
+
     const duration = Date.now() - startTime;
     logger.info(`Módulo ${moduleName} cargado`, { duration: `${duration}ms` });
-    
+
     return lazyModules[moduleName];
   } catch (error) {
-    logger.error(`Error cargando módulo ${moduleName}`, { error: error.message, stack: error.stack });
+    logger.error(`Error cargando módulo ${moduleName}`, {
+      error: error.message,
+      stack: error.stack
+    });
     throw error;
   }
 }
@@ -1777,28 +1897,35 @@ async function loadLazyModule(moduleName) {
  * @param {boolean} params.forceReload - Forzar recarga
  * @returns {Promise<Object>} Resultado de la carga
  */
-ipcMain.handle('load-lazy-module', validateIPC('load-lazy-module', async (event, { moduleName, forceReload = false }) => {
-  try {
-    const module = await LazyLoader.loadLazyModule(moduleName, { forceReload });
-    const stats = LazyLoader.getStats();
-    
-    return {
-      success: true,
-      moduleName,
-      stats: {
-        loadedModules: stats.loadedModules,
-        hitRate: stats.hitRate,
-        avgLoadTime: stats.avgLoadTime
-      }
-    };
-  } catch (error) {
-    logger.error('Error en load-lazy-module', { moduleName, error: error.message, stack: error.stack });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}));
+ipcMain.handle(
+  'load-lazy-module',
+  validateIPC('load-lazy-module', async (event, { moduleName, forceReload = false }) => {
+    try {
+      const module = await LazyLoader.loadLazyModule(moduleName, { forceReload });
+      const stats = LazyLoader.getStats();
+
+      return {
+        success: true,
+        moduleName,
+        stats: {
+          loadedModules: stats.loadedModules,
+          hitRate: stats.hitRate,
+          avgLoadTime: stats.avgLoadTime
+        }
+      };
+    } catch (error) {
+      logger.error('Error en load-lazy-module', {
+        moduleName,
+        error: error.message,
+        stack: error.stack
+      });
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  })
+);
 
 // ════════════════════════════════════════════════════════════════════════════
 // APP LIFECYCLE
@@ -1807,20 +1934,20 @@ ipcMain.handle('load-lazy-module', validateIPC('load-lazy-module', async (event,
 app.whenReady().then(async () => {
   // Crear menús nativos del OS
   createApplicationMenu();
-  
+
   // Iniciar servidor de API (para endpoints como HeyGen token)
   startAPIServer();
-  
+
   // Inicializar Model Router (crítico, cargar primero)
   initializeModelRouter();
-  
+
   // Iniciar Health Aggregator para monitoreo de servicios
   globalHealthAggregator.start();
   logger.info('Health Aggregator iniciado');
-  
+
   // Inicializar Service Reconnection Manager
   const serviceReconnectionManager = getServiceReconnectionManager();
-  
+
   // Registrar servicios MCP para reconexión automática
   serviceReconnectionManager.registerService(
     'ollama-mcp-server',
@@ -1841,7 +1968,7 @@ app.whenReady().then(async () => {
       return await checkServerHealth('http://localhost:6002/ollama/health', 3000);
     }
   );
-  
+
   serviceReconnectionManager.registerService(
     'groq-api-server',
     {
@@ -1861,30 +1988,32 @@ app.whenReady().then(async () => {
       return await checkServerHealth('http://localhost:6003/groq/health', 3000);
     }
   );
-  
+
   // Iniciar health checks de reconexión
   serviceReconnectionManager.startHealthChecks();
   logger.info('Service Reconnection Manager iniciado');
-  
+
   // Crear ventana principal (cargar UI primero para mejor UX)
   createWindow();
-  
+
   // Cargar servidores en segundo plano (lazy loading mejorado)
   // Solo verificar si están corriendo, no iniciar automáticamente
-  startDedicatedServers(true).then(async ({ ollamaRunning, groqRunning }) => {
-    // Si no están corriendo, intentar conectar con reconexión automática
-    if (!ollamaRunning) {
-      logger.info('Ollama MCP Server no está corriendo, intentando conectar...');
-      await serviceReconnectionManager.connectService('ollama-mcp-server');
-    }
-    if (!groqRunning) {
-      logger.info('Groq API Server no está corriendo, intentando conectar...');
-      await serviceReconnectionManager.connectService('groq-api-server');
-    }
-  }).catch(error => {
-    logger.warn('Error verificando servidores dedicados', { error: error.message });
-  });
-  
+  startDedicatedServers(true)
+    .then(async ({ ollamaRunning, groqRunning }) => {
+      // Si no están corriendo, intentar conectar con reconexión automática
+      if (!ollamaRunning) {
+        logger.info('Ollama MCP Server no está corriendo, intentando conectar...');
+        await serviceReconnectionManager.connectService('ollama-mcp-server');
+      }
+      if (!groqRunning) {
+        logger.info('Groq API Server no está corriendo, intentando conectar...');
+        await serviceReconnectionManager.connectService('groq-api-server');
+      }
+    })
+    .catch(error => {
+      logger.warn('Error verificando servidores dedicados', { error: error.message });
+    });
+
   // MCP Server también se puede cargar bajo demanda
   // Solo iniciar si es necesario para funcionalidad básica
   if (process.env.AUTO_START_MCP !== 'false') {
@@ -1892,26 +2021,26 @@ app.whenReady().then(async () => {
       logger.warn('MCP Server se cargará bajo demanda', { error: error.message });
     });
   }
-  
+
   // Inicializar system tray
   if (mainWindow) {
     tray = initializeTray(mainWindow);
   }
-  
+
   // Configurar auto-updater (solo en producción)
   if (process.env.NODE_ENV !== 'development' && !process.env.DISABLE_AUTO_UPDATE) {
     try {
       configureUpdater({
         autoDownload: true,
         autoInstallOnAppQuit: true,
-        onUpdateAvailable: (info) => {
+        onUpdateAvailable: info => {
           showNotification('Actualización disponible', `Versión ${info.version} disponible`);
         },
-        onUpdateDownloaded: (info) => {
+        onUpdateDownloaded: info => {
           showNotification('Actualización lista', 'Se instalará al reiniciar');
         }
       });
-      
+
       // Verificar actualizaciones cada hora
       startAutoUpdateCheck(60);
     } catch (error) {
@@ -1939,22 +2068,22 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   app.isQuiting = true;
-  
+
   // Destruir system tray
   if (tray) {
     destroyTray();
   }
-  
+
   // Detener health aggregator
   globalHealthAggregator.stop();
-  
+
   // Detener service reconnection manager
   const serviceReconnectionManager = getServiceReconnectionManager();
   serviceReconnectionManager.cleanup();
-  
+
   // Cerrar service registry
   globalServiceRegistry.shutdown();
-  
+
   // Cerrar servidores si es necesario
   if (apiHttpServer) {
     apiHttpServer.close(() => {
@@ -1971,4 +2100,3 @@ app.on('before-quit', () => {
     groqApiServer.stop();
   }
 });
-
