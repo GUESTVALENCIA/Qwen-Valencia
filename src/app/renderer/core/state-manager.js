@@ -87,9 +87,14 @@ class StateManager {
 
     // FIX: Detectar referencias circulares
     if (visited.has(obj)) {
-      // Retornar el objeto sin congelar para evitar stack overflow
-      this.logger.warn('Referencia circular detectada en deepFreeze, omitiendo congelamiento');
-      return obj;
+      // FIX: Lanzar error en lugar de retornar objeto no congelado para mantener consistencia con deepCopy
+      // Esto previene que objetos con referencias circulares queden mutables, rompiendo la garantía de inmutabilidad
+      const error = new Error('Referencia circular detectada en deepFreeze. El estado contiene referencias circulares que no pueden ser congeladas.');
+      this.logger.error('Referencia circular detectada en deepFreeze', {
+        error: error.message,
+        objectType: obj.constructor?.name || typeof obj
+      });
+      throw error;
     }
 
     // Marcar objeto como visitado antes de procesarlo

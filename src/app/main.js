@@ -1354,12 +1354,14 @@ ipcMain.handle(
       });
       
       // FIX: Construir el HTML de forma segura sin doble encoding
-      // Usar comillas simples en el atributo src para evitar necesidad de escapar comillas dobles
-      // Luego codificar TODO el HTML con encodeURIComponent (incluyendo el videoSrc)
-      // Esto evita doble encoding: el videoSrc se codifica una sola vez cuando codificamos el HTML completo
+      // Escapar comillas simples en videoSrc para prevenir inyección en atributo HTML
+      // Luego codificar TODO el HTML con encodeURIComponent (incluyendo el videoSrc escapado)
+      // Esto evita doble encoding: primero escapamos comillas, luego codificamos todo el HTML
+      const escapedVideoSrc = videoSrc.replace(/'/g, '&#039;');
+      
       const htmlContent = 
         '<html><body style="margin:0;background:transparent;">' +
-        `<video src='${videoSrc}' autoplay playsinline ` +
+        `<video src='${escapedVideoSrc}' autoplay playsinline ` +
         'style="width:100%;height:100%;object-fit:contain;"></video>' +
         '</body></html>';
       

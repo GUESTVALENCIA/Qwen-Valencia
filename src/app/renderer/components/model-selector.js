@@ -220,16 +220,21 @@ class ModelSelector {
                 }
             );
             
-            // FIX: Verificar que result existe y que el total de elementos en el DOM coincida con items.length
-            // Si no coincide, significa que la actualización incremental falló parcialmente
-            // y debemos ejecutar el fallback para asegurar consistencia del DOM
+            // FIX: Verificar que result existe y que el total de elementos procesados coincida con items.length
+            // result.total incluye todos los elementos procesados (headers, dividers, modelos)
+            // items.length incluye headers, dividers y modelos
+            // Por lo tanto, result.total debería coincidir con items.length
             if (!result || result.total !== items.length) {
                 // Fallback: renderización completa si la actualización incremental falló o no produjo el resultado esperado
                 this.renderModelListFull(container, items);
             } else {
-                // Verificar también el conteo real en el DOM como validación adicional
+                // FIX: Verificar conteo real usando el mismo selector que updateListIncremental configuró
+                // itemSelector es '[data-key]' y items incluye headers, dividers y modelos (todos tienen data-key)
+                // Comparar result.total (elementos procesados) con actualCount (elementos en DOM con data-key)
                 const actualCount = container.querySelectorAll('[data-key]').length;
-                if (actualCount !== items.length) {
+                if (actualCount !== result.total) {
+                    // Si el conteo en el DOM no coincide con result.total, ejecutar fallback
+                    // Esto puede ocurrir si algunos elementos no se renderizaron correctamente
                     this.renderModelListFull(container, items);
                 }
             }
