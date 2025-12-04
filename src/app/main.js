@@ -1356,23 +1356,22 @@ ipcMain.handle(
         }
       }
       
-      // FIX: Construir el HTML de forma segura
-      // Escapar videoSrc para uso en atributo HTML (escapar comillas y caracteres HTML especiales)
+      // FIX: Construir el HTML de forma segura sin doble encoding
+      // Solo escapar comillas para uso en atributo HTML (no otros caracteres HTML)
+      // encodeURIComponent ya manejará la codificación URL del HTML completo
       const escapedVideoSrc = videoSrc
-        .replace(/&/g, '&amp;')   // Debe ser primero para evitar doble escape
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
+        .replace(/"/g, '&quot;')  // Solo escapar comillas dobles para atributo HTML
+        .replace(/'/g, '&#039;'); // Solo escapar comillas simples para atributo HTML
       
       // Construir HTML seguro y luego codificar todo el data URL
+      // encodeURIComponent codificará todos los caracteres especiales del HTML, incluyendo la URL del video
       const htmlContent = 
         '<html><body style="margin:0;background:transparent;">' +
         `<video src="${escapedVideoSrc}" autoplay playsinline ` +
         'style="width:100%;height:100%;object-fit:contain;"></video>' +
         '</body></html>';
       
-      // Codificar todo el HTML en el data URL
+      // Codificar todo el HTML en el data URL (esto codifica la URL del video correctamente)
       const safeHTML = `data:text/html,${encodeURIComponent(htmlContent)}`;
       
       avatarWindow.loadURL(safeHTML);

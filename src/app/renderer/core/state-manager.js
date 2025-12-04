@@ -149,10 +149,14 @@ class StateManager {
 
     // FIX: Detectar referencias circulares
     if (visited.has(obj)) {
-      // Retornar null para referencias circulares (evita stack overflow)
-      // Alternativa: retornar el objeto mismo si se quiere preservar la referencia
-      this.logger.warn('Referencia circular detectada en deepCopy, retornando null');
-      return null;
+      // FIX: Lanzar error en lugar de retornar null para evitar cambios silenciosos en la estructura del estado
+      // Esto previene que código que espera una propiedad exista reciba null inesperadamente
+      const error = new Error('Referencia circular detectada en deepCopy. El estado contiene referencias circulares que no pueden ser copiadas.');
+      this.logger.error('Referencia circular detectada en deepCopy', {
+        error: error.message,
+        objectType: obj.constructor?.name || typeof obj
+      });
+      throw error;
     }
 
     // Marcar objeto como visitado antes de procesarlo
