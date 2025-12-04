@@ -588,6 +588,7 @@ class OllamaMCPServer extends EventEmitter {
       );
 
       let fullContent = '';
+      let isComplete = false; // Flag para evitar llamar onComplete dos veces
 
       response.data.on('data', chunk => {
         const lines = chunk
@@ -606,7 +607,9 @@ class OllamaMCPServer extends EventEmitter {
                 onToken(content, fullContent);
               }
 
-              if (data.done && onComplete) {
+              // FIX: Solo llamar onComplete cuando data.done es true, y marcar como completo
+              if (data.done && onComplete && !isComplete) {
+                isComplete = true;
                 onComplete(fullContent);
               }
             }
@@ -616,8 +619,10 @@ class OllamaMCPServer extends EventEmitter {
         }
       });
 
+      // FIX: Solo llamar onComplete si no se llamó ya (cuando data.done fue true)
       response.data.on('end', () => {
-        if (fullContent && onComplete) {
+        if (fullContent && onComplete && !isComplete) {
+          isComplete = true;
           onComplete(fullContent);
         }
       });
@@ -718,6 +723,16 @@ class OllamaMCPServer extends EventEmitter {
     });
     this.cleanupIntervals = [];
 
+    // FIX: Limpiar recursos antes de cerrar el servidor para evitar memory leaks
+    // Limpiar recursos
+    this.cache.destroy(); // LRUCache tiene método destroy para limpiar intervals
+    this.streamManager.shutdown(); // Cerrar todos los streams y limpiar recursos
+
+    // Cerrar pool de conexiones HTTP
+    if (this.httpAgent) {
+      this.httpAgent.destroy();
+    }
+
     // Cerrar servidor HTTP
     if (this.server) {
       return new Promise(resolve => {
@@ -726,15 +741,6 @@ class OllamaMCPServer extends EventEmitter {
           resolve();
         });
       });
-    }
-
-    // Limpiar recursos
-    this.cache.destroy(); // LRUCache tiene método destroy para limpiar intervals
-    this.streamManager.shutdown(); // Cerrar todos los streams y limpiar recursos
-
-    // Cerrar pool de conexiones HTTP
-    if (this.httpAgent) {
-      this.httpAgent.destroy();
     }
   }
 }
