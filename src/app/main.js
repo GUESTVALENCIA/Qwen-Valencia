@@ -1371,8 +1371,9 @@ ipcMain.handle(
         'style="width:100%;height:100%;object-fit:contain;"></video>' +
         '</body></html>';
       
+      // FIX: Agregar charset=UTF-8 al data URL como requiere Electron
       // Codificar todo el HTML en el data URL (esto codifica la URL del video correctamente)
-      const safeHTML = `data:text/html,${encodeURIComponent(htmlContent)}`;
+      const safeHTML = `data:text/html;charset=UTF-8,${encodeURIComponent(htmlContent)}`;
       
       avatarWindow.loadURL(safeHTML);
 

@@ -13,6 +13,10 @@ class StateManager {
     // FIX: Definir enableImmutable ANTES de llamar deepFreeze() para que funcione correctamente
     this.enableImmutable = options.enableImmutable !== false; // Por defecto habilitado
     
+    // FIX: Asignar logger ANTES de usar deepCopy para que esté disponible si hay errores
+    // deepCopy puede lanzar errores que necesitan logger.error()
+    this.logger = (typeof window !== 'undefined' && window.defaultLogger) || console;
+    
     // FIX: Crear copia profunda del estado inicial antes de congelarlo
     // Esto evita problemas si initialState ya está congelado o tiene objetos anidados congelados
     const initialStateCopy = this.deepCopy(initialState);
@@ -23,7 +27,6 @@ class StateManager {
     this.maxHistorySize = options.maxHistorySize || 50;
     this.enablePersistence = options.enablePersistence !== false;
     this.persistenceKey = options.persistenceKey || 'qwen-valencia-state';
-    this.logger = (typeof window !== 'undefined' && window.defaultLogger) || console;
 
     // Cargar estado persistido
     if (this.enablePersistence) {
