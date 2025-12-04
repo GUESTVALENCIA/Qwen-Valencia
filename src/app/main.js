@@ -1920,17 +1920,14 @@ ipcMain.handle(
   'load-lazy-module',
   validateIPC('load-lazy-module', async (event, { moduleName, forceReload = false }) => {
     try {
-      const module = await LazyLoader.loadLazyModule(moduleName, { forceReload });
-      const stats = LazyLoader.getStats();
+      // FIX: Usar la función local loadLazyModule() que maneja nombres de módulos,
+      // no LazyLoader.loadLazyModule() que espera rutas de archivo
+      const module = await loadLazyModule(moduleName);
 
       return {
         success: true,
         moduleName,
-        stats: {
-          loadedModules: stats.loadedModules,
-          hitRate: stats.hitRate,
-          avgLoadTime: stats.avgLoadTime
-        }
+        module: module ? 'loaded' : 'not found'
       };
     } catch (error) {
       logger.error('Error en load-lazy-module', {
