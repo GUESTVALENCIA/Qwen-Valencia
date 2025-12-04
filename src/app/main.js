@@ -598,12 +598,16 @@ function initializeModelRouter() {
   let groqApiKey = variablesLoader.get('GROQ_API_KEY') || process.env.GROQ_API_KEY;
   if (groqApiKey) {
     // Limpiar API key: eliminar espacios, comillas, saltos de línea, caracteres de control
-    // eslint-disable-next-line no-control-regex
+    // Remover caracteres de control sin usar regex con control chars (para evitar error ESLint)
+    groqApiKey = groqApiKey.trim().replace(/['"]/g, '').replace(/\s+/g, '');
+    // Filtrar caracteres de control (0x00-0x1F y 0x7F-0x9F) sin usar regex
     groqApiKey = groqApiKey
-      .trim()
-      .replace(/['"]/g, '')
-      .replace(/\s+/g, '')
-      .replace(/[\x00-\x1F\x7F-\x9F]/g, '');
+      .split('')
+      .filter(char => {
+        const code = char.charCodeAt(0);
+        return !((code >= 0 && code <= 31) || (code >= 127 && code <= 159));
+      })
+      .join('');
 
     // Validar formato básico
     if (groqApiKey.length < 20) {
@@ -1412,86 +1416,95 @@ ipcMain.handle(
 /**
  * Handler para obtener estado de MCP Master Server
  */
-ipcMain.handle('get-mcp-master-status', async event => {
-  try {
-    return {
-      running: mcpServer !== null && mcpServer.server !== null,
-      port: mcpServer ? mcpServer.port : null
-    };
-  } catch (error) {
-    logger.error('Error obteniendo estado MCP', { error: error.message, stack: error.stack });
-    return {
-      running: false,
-      error: error.message
-    };
-  }
-});
+ipcMain.handle(
+  'get-mcp-master-status',
+  validateIPC('get-mcp-master-status', async event => {
+    try {
+      return {
+        running: mcpServer !== null && mcpServer.server !== null,
+        port: mcpServer ? mcpServer.port : null
+      };
+    } catch (error) {
+      logger.error('Error obteniendo estado MCP', { error: error.message, stack: error.stack });
+      return {
+        running: false,
+        error: error.message
+      };
+    }
+  })
+);
 
 /**
  * Handler para obtener memoria del sistema (RAM real)
  */
-ipcMain.handle('get-system-memory', async event => {
-  const startTime = Date.now();
-  try {
-    const totalBytes = os.totalmem();
-    const freeBytes = os.freemem();
-    const usedBytes = totalBytes - freeBytes;
+ipcMain.handle(
+  'get-system-memory',
+  validateIPC('get-system-memory', async event => {
+    const startTime = Date.now();
+    try {
+      const totalBytes = os.totalmem();
+      const freeBytes = os.freemem();
+      const usedBytes = totalBytes - freeBytes;
 
-    const memoryInfo = {
-      total: totalBytes / (1024 * 1024), // MB
-      free: freeBytes / (1024 * 1024), // MB
-      used: usedBytes / (1024 * 1024), // MB
-      available: freeBytes / (1024 * 1024), // MB (alias de free)
-      percentage: (usedBytes / totalBytes) * 100
-    };
+      const memoryInfo = {
+        total: totalBytes / (1024 * 1024), // MB
+        free: freeBytes / (1024 * 1024), // MB
+        used: usedBytes / (1024 * 1024), // MB
+        available: freeBytes / (1024 * 1024), // MB (alias de free)
+        percentage: (usedBytes / totalBytes) * 100
+      };
 
-    // Registrar métrica
-    metrics.observe('system_memory_used_mb', {}, memoryInfo.used);
-    metrics.observe('system_memory_percentage', {}, memoryInfo.percentage);
-    metrics.increment('system_memory_requests', {});
+      // Registrar métrica
+      metrics.observe('system_memory_used_mb', {}, memoryInfo.used);
+      metrics.observe('system_memory_percentage', {}, memoryInfo.percentage);
+      metrics.increment('system_memory_requests', {});
 
-    return memoryInfo;
-  } catch (error) {
-    logger.error('Error obteniendo memoria del sistema', {
-      error: error.message,
-      stack: error.stack
-    });
-    metrics.increment('system_memory_errors', {});
-    return null;
-  } finally {
-    const duration = Date.now() - startTime;
-    metrics.observe('system_memory_request_duration_ms', {}, duration);
-  }
-});
+      return memoryInfo;
+    } catch (error) {
+      logger.error('Error obteniendo memoria del sistema', {
+        error: error.message,
+        stack: error.stack
+      });
+      metrics.increment('system_memory_errors', {});
+      return null;
+    } finally {
+      const duration = Date.now() - startTime;
+      metrics.observe('system_memory_request_duration_ms', {}, duration);
+    }
+  })
+);
 
 /**
  * Handler para obtener métricas de performance
  */
-ipcMain.handle('get-performance-metrics', async event => {
-  try {
-    const metricsData = {
-      counters: {},
-      gauges: {},
-      histograms: {},
-      uptime: (Date.now() - metrics.startTime) / 1000,
-      timestamp: Date.now()
-    };
+ipcMain.handle(
+  'get-performance-metrics',
+  validateIPC('get-performance-metrics', async event => {
+    try {
+      const metricsData = {
+        counters: {},
+        gauges: {},
+        histograms: {},
+        uptime: (Date.now() - metrics.startTime) / 1000,
+        timestamp: Date.now()
+      };
 
-    // Obtener métricas del collector global
-    const jsonMetrics = globalMetrics.getJSONFormat();
-    return {
-      success: true,
-      metrics: jsonMetrics,
-      prometheus: globalMetrics.getPrometheusFormat()
-    };
-  } catch (error) {
-    logger.error('Error obteniendo métricas de performance', { error: error.message });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-});
+      // Obtener métricas del collector global
+      const jsonMetrics = globalMetrics.getJSONFormat();
+      return {
+        success: true,
+        metrics: jsonMetrics,
+        prometheus: globalMetrics.getPrometheusFormat()
+      };
+    } catch (error) {
+      logger.error('Error obteniendo métricas de performance', { error: error.message });
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  })
+);
 
 // ════════════════════════════════════════════════════════════════════════════
 // STATE SYNCHRONIZATION - Sincronización de Estado Frontend-Backend
@@ -1698,21 +1711,24 @@ ipcMain.on('terminal-close', (event, terminalId) => {
 /**
  * Handler para obtener terminales disponibles
  */
-ipcMain.handle('get-available-terminals', async event => {
-  try {
-    const terminals = terminalManager.getAvailableTerminals();
-    return {
-      success: true,
-      terminals
-    };
-  } catch (error) {
-    logger.error('Error obteniendo terminales', { error: error.message });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-});
+ipcMain.handle(
+  'get-available-terminals',
+  validateIPC('get-available-terminals', async event => {
+    try {
+      const terminals = terminalManager.getAvailableTerminals();
+      return {
+        success: true,
+        terminals
+      };
+    } catch (error) {
+      logger.error('Error obteniendo terminales', { error: error.message });
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  })
+);
 
 // ════════════════════════════════════════════════════════════════════════════
 // MULTI-WINDOW MANAGEMENT
@@ -1796,27 +1812,30 @@ ipcMain.handle(
 /**
  * Handler para obtener todas las ventanas
  */
-ipcMain.handle('get-windows', async event => {
-  try {
-    const windowList = Array.from(windows.entries()).map(([id, data]) => ({
-      id,
-      type: data.type,
-      isVisible: data.window.isVisible(),
-      isFocused: data.window.isFocused()
-    }));
+ipcMain.handle(
+  'get-windows',
+  validateIPC('get-windows', async event => {
+    try {
+      const windowList = Array.from(windows.entries()).map(([id, data]) => ({
+        id,
+        type: data.type,
+        isVisible: data.window.isVisible(),
+        isFocused: data.window.isFocused()
+      }));
 
-    return {
-      success: true,
-      windows: windowList
-    };
-  } catch (error) {
-    logger.error('Error obteniendo ventanas', { error: error.message });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-});
+      return {
+        success: true,
+        windows: windowList
+      };
+    } catch (error) {
+      logger.error('Error obteniendo ventanas', { error: error.message });
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  })
+);
 
 // ════════════════════════════════════════════════════════════════════════════
 // LAZY LOADING - Carga diferida de módulos pesados

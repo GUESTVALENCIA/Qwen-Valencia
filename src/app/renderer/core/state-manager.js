@@ -10,34 +10,101 @@
  */
 class StateManager {
   constructor(initialState = {}, options = {}) {
-    this.state = { ...initialState };
+    // FIX: Hacer estado inmutable usando deep freeze
+    this.state = this.deepFreeze({ ...initialState });
     this.observers = new Map();
     this.middleware = [];
     this.history = [];
     this.maxHistorySize = options.maxHistorySize || 50;
     this.enablePersistence = options.enablePersistence !== false;
     this.persistenceKey = options.persistenceKey || 'qwen-valencia-state';
+    this.enableImmutable = options.enableImmutable !== false; // Por defecto habilitado
     this.logger = (typeof window !== 'undefined' && window.defaultLogger) || console;
-    
+
     // Cargar estado persistido
     if (this.enablePersistence) {
       this.loadFromStorage();
     }
-    
+
     // Guardar estado en storage cuando cambia
     if (this.enablePersistence) {
-      this.addMiddleware((state, action) => {
+      this.addMiddleware((state, _action) => {
         this.saveToStorage();
+        return state;
+      });
+    }
+
+    // Middleware para logging de cambios (solo en desarrollo)
+    if (options.enableChangeLogging !== false && this.logger.debug) {
+      this.addMiddleware((state, action, context) => {
+        this.logger.debug('State change', {
+          action,
+          key: context?.key,
+          changes: context?.changes,
+          correlationId: this.logger.getCorrelationId?.()
+        });
         return state;
       });
     }
   }
 
   /**
-   * Obtiene el estado actual
+   * Deep freeze para hacer objetos completamente inmutables
+   */
+  deepFreeze(obj) {
+    if (!this.enableImmutable) {
+      return obj;
+    }
+
+    // Obtener nombres de propiedades
+    const propNames = Object.getOwnPropertyNames(obj);
+
+    // Freeze propiedades
+    propNames.forEach(name => {
+      const value = obj[name];
+
+      // Freeze recursivamente si es objeto o array
+      if (value && typeof value === 'object') {
+        this.deepFreeze(value);
+      }
+    });
+
+    // Freeze el objeto mismo
+    return Object.freeze(obj);
+  }
+
+  /**
+   * Obtiene el estado actual (copia profunda para mantener inmutabilidad)
    */
   getState() {
-    return { ...this.state };
+    // Retornar copia profunda para mantener inmutabilidad
+    return this.deepCopy(this.state);
+  }
+
+  /**
+   * Deep copy para mantener inmutabilidad
+   */
+  deepCopy(obj) {
+    if (obj === null || typeof obj !== 'object') {
+      return obj;
+    }
+
+    if (obj instanceof Date) {
+      return new Date(obj.getTime());
+    }
+
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.deepCopy(item));
+    }
+
+    const copy = {};
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        copy[key] = this.deepCopy(obj[key]);
+      }
+    }
+
+    return copy;
   }
 
   /**
@@ -48,55 +115,78 @@ class StateManager {
   }
 
   /**
-   * Establece un valor en el estado
+   * Establece un valor en el estado (inmutable)
    */
   set(key, value, action = 'set') {
-    const previousState = { ...this.state };
-    this.state[key] = value;
-    
+    // Crear copia profunda del estado anterior
+    const previousState = this.deepCopy(this.state);
+
+    // Crear nuevo estado con el cambio
+    const newState = { ...this.state };
+    newState[key] = value;
+
     // Ejecutar middleware
-    let newState = { ...this.state };
+    let processedState = newState;
     for (const middleware of this.middleware) {
-      newState = middleware(newState, action, { key, value, previousState });
+      processedState = middleware(processedState, action, { key, value, previousState });
+      // Asegurar que middleware retorna un objeto nuevo
+      if (processedState === this.state) {
+        processedState = { ...processedState };
+      }
     }
-    this.state = newState;
-    
+
+    // FIX: Hacer el nuevo estado inmutable
+    this.state = this.enableImmutable ? this.deepFreeze(processedState) : processedState;
+
     // Agregar al historial
     this.addToHistory(action, { key, value, previousState });
-    
+
     // Notificar observadores
     this.notifyObservers(key, value, previousState[key]);
-    
-    this.logger.debug('State updated', { key, action, correlationId: this.logger.getCorrelationId() });
+
+    this.logger.debug('State updated', {
+      key,
+      action,
+      correlationId: this.logger.getCorrelationId?.()
+    });
   }
 
   /**
-   * Actualiza múltiples valores a la vez
+   * Actualiza múltiples valores a la vez (inmutable)
    */
   update(updates, action = 'update') {
-    const previousState = { ...this.state };
+    // Crear copia profunda del estado anterior
+    const previousState = this.deepCopy(this.state);
     const changes = {};
-    
+
+    // Crear nuevo estado con todos los cambios
+    const newState = { ...this.state };
     for (const [key, value] of Object.entries(updates)) {
-      this.state[key] = value;
+      newState[key] = value;
       changes[key] = { from: previousState[key], to: value };
     }
-    
+
     // Ejecutar middleware
-    let newState = { ...this.state };
+    let processedState = newState;
     for (const middleware of this.middleware) {
-      newState = middleware(newState, action, { changes, previousState });
+      processedState = middleware(processedState, action, { changes, previousState });
+      // Asegurar que middleware retorna un objeto nuevo
+      if (processedState === this.state) {
+        processedState = { ...processedState };
+      }
     }
-    this.state = newState;
-    
+
+    // FIX: Hacer el nuevo estado inmutable
+    this.state = this.enableImmutable ? this.deepFreeze(processedState) : processedState;
+
     // Agregar al historial
     this.addToHistory(action, { changes, previousState });
-    
+
     // Notificar observadores para cada cambio
     for (const [key, value] of Object.entries(updates)) {
       this.notifyObservers(key, value, previousState[key]);
     }
-    
+
     this.logger.debug('State updated (multiple)', { keys: Object.keys(updates), action });
   }
 
@@ -108,7 +198,7 @@ class StateManager {
       this.observers.set(key, new Set());
     }
     this.observers.get(key).add(callback);
-    
+
     // Retornar función de unsubscribe
     return () => {
       const callbacks = this.observers.get(key);
@@ -143,7 +233,7 @@ class StateManager {
         }
       });
     }
-    
+
     // Notificar observadores globales
     const globalObservers = this.observers.get('*');
     if (globalObservers) {
@@ -176,7 +266,7 @@ class StateManager {
       data,
       state: { ...this.state }
     });
-    
+
     // Limitar tamaño del historial
     if (this.history.length > this.maxHistorySize) {
       this.history.shift();
@@ -245,9 +335,9 @@ class StateManager {
     this.addMiddleware((state, action, context) => {
       const validation = validator(state, action, context);
       if (!validation.valid) {
-        this.logger.warn('State validation failed', { 
-          action, 
-          errors: validation.errors 
+        this.logger.warn('State validation failed', {
+          action,
+          errors: validation.errors
         });
         throw new Error(`State validation failed: ${validation.errors.join(', ')}`);
       }
@@ -330,4 +420,3 @@ if (typeof window !== 'undefined') {
   window.createStateManager = createStateManager;
   window.getStateManager = getStateManager;
 }
-
