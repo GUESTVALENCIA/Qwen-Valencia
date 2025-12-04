@@ -33,6 +33,10 @@ const { globalServiceRegistry } = require('../services/service-registry');
 const { globalHealthAggregator } = require('../services/health-aggregator');
 const { globalTracer } = require('../services/distributed-tracing');
 const { getServiceReconnectionManager } = require('../services/service-reconnection');
+const { initializeInstanceManager, getServicePortPool } = require('../config');
+const { PortPoolManager } = require('../utils/port-pool-manager');
+const { getPortShieldManager } = require('../utils/port-shield');
+const { getInstanceManager } = require('../utils/instance-manager');
 
 // Inicializar logger estructurado
 const logger = LoggerFactory.create({ service: 'electron-main' });
@@ -247,25 +251,22 @@ async function startDedicatedServers(lazy = false) {
 }
 
 /**
- * Inicia el servidor MCP Universal con mejor manejo de puertos
+ * Inicia el servidor MCP Universal usando pools de puertos exclusivos
  */
 async function startMCPServer() {
   try {
-    // Asegurar que el puerto esté disponible
-    const port = await ensureMCPServerPort();
-
     mcpServer = new MCPUniversal();
     const started = await mcpServer.start();
 
-    if (started) {
-      logger.info('MCP Server iniciado exitosamente', { port });
+    if (started && mcpServer.port) {
+      logger.info('MCP Server iniciado exitosamente', { port: mcpServer.port });
 
       // Registrar servicio en service registry
       globalServiceRegistry.register({
         name: 'mcp-universal',
         version: '1.0.0',
         host: 'localhost',
-        port,
+        port: mcpServer.port,
         protocol: 'http',
         healthEndpoint: '/health',
         metadata: {
@@ -275,20 +276,14 @@ async function startMCPServer() {
         tags: ['mcp', 'universal', 'core']
       });
     } else {
-      logger.warn('MCP Server no pudo iniciar (puerto ocupado)');
-      logger.warn('La aplicación continuará, pero algunas funciones pueden no estar disponibles');
-
-      // Intentar con puerto alternativo
-      const altPort = await findAvailablePort(port + 1);
-      if (altPort) {
-        logger.info(`Intentando iniciar MCP Server en puerto alternativo ${altPort}`);
-        process.env.MCP_PORT = altPort.toString();
-        // No reintentar automáticamente para evitar loops infinitos
-      }
+      logger.error('ERROR FATAL: MCP Server no pudo iniciar (no se pudo adquirir puerto del pool)');
+      throw new Error(
+        'No se pudo iniciar MCP Server. Verifique que los puertos del pool estén disponibles.'
+      );
     }
   } catch (error) {
-    logger.error('Error iniciando MCP Server', { error: error.message, stack: error.stack });
-    logger.warn('La aplicación continuará, pero algunas funciones pueden no estar disponibles');
+    logger.error('ERROR FATAL iniciando MCP Server', { error: error.message, stack: error.stack });
+    throw error; // Propagar error en lugar de continuar
   }
 }
 
@@ -598,46 +593,14 @@ function createApplicationMenu() {
 }
 
 /**
- * Mejora la detección y manejo de puertos ocupados
+ * FUNCIONES PERMISIVAS ELIMINADAS
+ *
+ * findAvailablePort() - ELIMINADA (busca puertos alternativos - PROHIBIDO)
+ * ensureMCPServerPort() - ELIMINADA (busca alternativos - PROHIBIDO)
+ *
+ * Ahora se usan pools de puertos exclusivos con rotación automática.
+ * Ver: src/utils/port-pool-manager.js y src/utils/instance-manager.js
  */
-async function findAvailablePort(startPort, maxAttempts = 10) {
-  const net = require('net');
-
-  for (let i = 0; i < maxAttempts; i++) {
-    const port = startPort + i;
-    const available = await new Promise(resolve => {
-      const server = net.createServer();
-      server.listen(port, () => {
-        server.once('close', () => resolve(true));
-        server.close();
-      });
-      server.on('error', () => resolve(false));
-    });
-
-    if (available) {
-      return port;
-    }
-  }
-
-  return null;
-}
-
-/**
- * Verifica y corrige puerto MCP
- */
-async function ensureMCPServerPort() {
-  const configuredPort = parseInt(process.env.MCP_PORT || '6000', 10);
-
-  // Verificar si el puerto está ocupado
-  const availablePort = await findAvailablePort(configuredPort);
-
-  if (availablePort !== configuredPort) {
-    logger.warn(`Puerto MCP ${configuredPort} ocupado, usando puerto ${availablePort}`);
-    process.env.MCP_PORT = availablePort.toString();
-  }
-
-  return availablePort || configuredPort;
-}
 
 /**
  * Inicializa el Model Router
@@ -687,9 +650,13 @@ function initializeModelRouter() {
 }
 
 /**
- * Inicia servidor Express para endpoints de API (HeyGen token, etc.)
+ * Inicia servidor Express para endpoints de API usando pools de puertos exclusivos
  */
-function startAPIServer() {
+async function startAPIServer() {
+  let apiServerPortManager = null;
+  let apiServerShield = null;
+  let acquiredPort = null;
+
   try {
     apiServer = express();
     apiServer.use(express.json());
@@ -807,16 +774,82 @@ function startAPIServer() {
       }
     });
 
-    const port = 3000; // Puerto para el servidor de API
-    apiHttpServer = apiServer.listen(port, () => {
-      logger.info('API Server escuchando', { port });
+    // ════════════════════════════════════════════════════════════════════════════
+    // Obtener pool de puertos exclusivos y adquirir puerto con rotación automática
+    // ════════════════════════════════════════════════════════════════════════════
+
+    const portPool = getServicePortPool('api-server');
+    const instanceManager = getInstanceManager();
+
+    if (!instanceManager || !instanceManager.instanceNumber) {
+      throw new Error(
+        'Instance manager no inicializado. La aplicación debe inicializarse primero.'
+      );
+    }
+
+    // Crear pool manager
+    apiServerPortManager = new PortPoolManager(
+      'api-server',
+      portPool,
+      process.pid,
+      instanceManager.instanceId
+    );
+
+    // Adquirir puerto del pool con rotación automática
+    acquiredPort = await apiServerPortManager.acquirePortFromPool();
+
+    if (!acquiredPort) {
+      const acquisitionInfo = apiServerPortManager.getAcquisitionInfo();
+      logger.error('ERROR FATAL: No se pudo adquirir ningún puerto del pool de API Server', {
+        service: 'api-server',
+        portPool,
+        attemptedPorts: acquisitionInfo.attemptedPorts,
+        instanceId: instanceManager.instanceId
+      });
+
+      throw new Error(
+        `No se pudo adquirir ningún puerto del pool de API Server. ` +
+          `Pool: [${portPool.join(', ')}]. ` +
+          `Todos los puertos están bloqueados exclusivamente. ` +
+          `Cierre otras instancias o use una instancia diferente.`
+      );
+    }
+
+    // Activar shield de protección del puerto
+    const shieldManager = getPortShieldManager();
+    apiServerShield = shieldManager.createShield(
+      acquiredPort,
+      process.pid,
+      instanceManager.instanceId,
+      port => {
+        logger.error(
+          `SHIELD PERDIDO: Puerto ${port} ya no está bajo nuestro control. Cerrando servidor.`
+        );
+        if (apiHttpServer) {
+          apiHttpServer.close();
+        }
+      }
+    );
+
+    // Guardar referencias para cleanup
+    global.apiServerPortManager = apiServerPortManager;
+    global.apiServerShield = apiServerShield;
+    global.apiServerPort = acquiredPort;
+
+    // Iniciar servidor en el puerto adquirido
+    apiHttpServer = apiServer.listen(acquiredPort, () => {
+      logger.info(`✅ API Server escuchando en puerto ${acquiredPort}`, {
+        port: acquiredPort,
+        portPool,
+        instanceId: instanceManager.instanceId
+      });
 
       // Registrar API Server en service registry
       globalServiceRegistry.register({
         name: 'qwen-valencia-api',
         version: '1.0.0',
         host: 'localhost',
-        port,
+        port: acquiredPort,
         protocol: 'http',
         healthEndpoint: '/api/health',
         metadata: {
@@ -826,9 +859,51 @@ function startAPIServer() {
         tags: ['api', 'gateway', 'core']
       });
     });
+
+    // Manejo de errores estricto (solo errores técnicos, NO buscar alternativos)
+    apiHttpServer.on('error', error => {
+      if (error.code === 'EADDRINUSE') {
+        logger.error(`ERROR FATAL: Puerto ${acquiredPort} está en uso después de adquirir lock`, {
+          port: acquiredPort,
+          error: error.message
+        });
+
+        // Liberar recursos
+        if (apiServerPortManager) {
+          apiServerPortManager.releasePort();
+        }
+        if (apiServerShield && acquiredPort) {
+          const shieldManager = getPortShieldManager();
+          shieldManager.removeShield(acquiredPort);
+        }
+
+        throw new Error(`Puerto ${acquiredPort} está en uso. Conflicto detectado.`);
+      } else {
+        logger.error('Error iniciando API Server', { error: error.message, stack: error.stack });
+        throw error;
+      }
+    });
   } catch (error) {
-    logger.error('Error iniciando API Server', { error: error.message, stack: error.stack });
-    logger.warn('Algunas funciones pueden no estar disponibles');
+    logger.error('ERROR FATAL iniciando API Server', {
+      error: error.message,
+      stack: error.stack
+    });
+
+    // Liberar recursos en caso de error
+    if (apiServerPortManager && acquiredPort) {
+      apiServerPortManager.releasePort();
+    }
+    if (apiServerShield && acquiredPort) {
+      const shieldManager = getPortShieldManager();
+      shieldManager.removeShield(acquiredPort);
+    }
+
+    // En producción, no continuar sin API Server
+    if (process.env.NODE_ENV === 'production') {
+      throw error;
+    } else {
+      logger.warn('API Server no disponible. Algunas funciones pueden no estar disponibles.');
+    }
   }
 }
 
@@ -1931,6 +2006,250 @@ ipcMain.handle(
 );
 
 // ════════════════════════════════════════════════════════════════════════════
+// CONFIGURATION MANAGEMENT - Gestión de Configuración de Modelos
+// ════════════════════════════════════════════════════════════════════════════
+
+const fs = require('fs');
+
+/**
+ * Valida formato de configuración de modelos
+ */
+function validateModelsConfig(config) {
+  try {
+    if (!config || typeof config !== 'object') {
+      return false;
+    }
+
+    // Validar estructura básica
+    const validStructure =
+      Object.prototype.hasOwnProperty.call(config, 'online') ||
+      Object.prototype.hasOwnProperty.call(config, 'local');
+
+    if (!validStructure && !Array.isArray(config)) {
+      // Permitir formato flexible para modelos personalizados
+      return true;
+    }
+
+    // Validar estructura online
+    if (config.online && typeof config.online === 'object') {
+      const validCategories = ['reasoning', 'vision', 'code', 'audio'];
+      for (const category of Object.keys(config.online)) {
+        if (!validCategories.includes(category) && category !== 'custom') {
+          continue; // Permitir categorías personalizadas
+        }
+        if (typeof config.online[category] !== 'object') {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  } catch (error) {
+    logger.error('Error validando configuración de modelos', { error: error.message });
+    return false;
+  }
+}
+
+/**
+ * Handler para leer configuración de modelos
+ */
+ipcMain.handle(
+  'read-models-config',
+  validateIPC('read-models-config', async () => {
+    try {
+      const configPath = path.join(__dirname, '..', '..', 'config', 'models.json');
+
+      if (!fs.existsSync(configPath)) {
+        logger.warn('config/models.json no existe, creando archivo por defecto');
+        // Crear estructura básica si no existe
+        const defaultConfig = {
+          online: {
+            reasoning: {},
+            vision: {},
+            code: {},
+            audio: {}
+          },
+          local: {
+            orchestrator: {}
+          },
+          custom: []
+        };
+        fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2), 'utf-8');
+        return { success: true, data: defaultConfig, created: true };
+      }
+
+      const content = fs.readFileSync(configPath, 'utf-8');
+      const parsed = JSON.parse(content);
+
+      logger.info('Configuración de modelos leída exitosamente');
+      return { success: true, data: parsed };
+    } catch (error) {
+      logger.error('Error leyendo config/models.json', {
+        error: error.message,
+        stack: error.stack
+      });
+      return {
+        success: false,
+        error: error.message,
+        details: 'No se pudo leer la configuración de modelos'
+      };
+    }
+  })
+);
+
+/**
+ * Handler para guardar configuración de modelos
+ */
+ipcMain.handle(
+  'save-models-config',
+  validateIPC('save-models-config', async (event, modelsConfig) => {
+    const fs = require('fs');
+    const configPath = path.join(__dirname, '..', '..', 'config', 'models.json');
+    let backupPath = null;
+
+    try {
+      // Validar formato antes de guardar
+      if (!validateModelsConfig(modelsConfig)) {
+        return {
+          success: false,
+          error: 'Formato de configuración inválido',
+          details: 'La configuración no tiene el formato esperado'
+        };
+      }
+
+      // Crear backup antes de guardar
+      if (fs.existsSync(configPath)) {
+        backupPath = configPath + '.backup.' + Date.now();
+        try {
+          fs.copyFileSync(configPath, backupPath);
+          logger.info('Backup creado exitosamente', { backupPath });
+        } catch (backupError) {
+          logger.warn('Error creando backup, continuando de todas formas', {
+            error: backupError.message
+          });
+        }
+      }
+
+      // Validar que el directorio existe
+      const configDir = path.dirname(configPath);
+      if (!fs.existsSync(configDir)) {
+        fs.mkdirSync(configDir, { recursive: true });
+        logger.info('Directorio de configuración creado', { configDir });
+      }
+
+      // Guardar nueva configuración con formato legible
+      const content = JSON.stringify(modelsConfig, null, 2);
+      fs.writeFileSync(configPath, content, 'utf-8');
+
+      // Verificar que se guardó correctamente
+      const verifyContent = fs.readFileSync(configPath, 'utf-8');
+      const verified = JSON.parse(verifyContent);
+
+      logger.info('Configuración de modelos guardada exitosamente', {
+        backupPath,
+        modelCount:
+          Object.keys(modelsConfig.online || {}).length +
+          Object.keys(modelsConfig.local || {}).length
+      });
+
+      metrics.increment('models_config_saved', {});
+
+      return {
+        success: true,
+        backupPath,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      logger.error('Error guardando config/models.json', {
+        error: error.message,
+        stack: error.stack
+      });
+
+      // Intentar restaurar backup si existe
+      if (backupPath && fs.existsSync(backupPath)) {
+        try {
+          fs.copyFileSync(backupPath, configPath);
+          logger.info('Backup restaurado después de error', { backupPath });
+        } catch (restoreError) {
+          logger.error('Error restaurando backup', {
+            error: restoreError.message,
+            backupPath
+          });
+        }
+      }
+
+      metrics.increment('models_config_save_errors', {});
+
+      return {
+        success: false,
+        error: error.message,
+        details:
+          'No se pudo guardar la configuración. El backup fue restaurado si estaba disponible.',
+        backupPath
+      };
+    }
+  })
+);
+
+/**
+ * Handler para leer configuración de orquestador
+ */
+ipcMain.handle(
+  'read-orchestrator-config',
+  validateIPC('read-orchestrator-config', async () => {
+    try {
+      const configPath = path.join(__dirname, '..', '..', 'config', 'sandra-orchestrator.json');
+
+      if (!fs.existsSync(configPath)) {
+        return { success: false, error: 'Archivo de configuración no encontrado' };
+      }
+
+      const content = fs.readFileSync(configPath, 'utf-8');
+      const parsed = JSON.parse(content);
+
+      return { success: true, data: parsed };
+    } catch (error) {
+      logger.error('Error leyendo config/sandra-orchestrator.json', { error: error.message });
+      return { success: false, error: error.message };
+    }
+  })
+);
+
+/**
+ * Handler para obtener lista de configuraciones disponibles
+ */
+ipcMain.handle(
+  'list-config-files',
+  validateIPC('list-config-files', async () => {
+    try {
+      const configDir = path.join(__dirname, '..', '..', 'config');
+      const files = [];
+
+      if (fs.existsSync(configDir)) {
+        const fileList = fs.readdirSync(configDir);
+        for (const file of fileList) {
+          if (file.endsWith('.json')) {
+            const filePath = path.join(configDir, file);
+            const stats = fs.statSync(filePath);
+            files.push({
+              name: file,
+              path: filePath,
+              size: stats.size,
+              modified: stats.mtime.toISOString()
+            });
+          }
+        }
+      }
+
+      return { success: true, files };
+    } catch (error) {
+      logger.error('Error listando archivos de configuración', { error: error.message });
+      return { success: false, error: error.message };
+    }
+  })
+);
+
+// ════════════════════════════════════════════════════════════════════════════
 // LAZY LOADING - Carga diferida de módulos pesados
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -2123,11 +2442,38 @@ ipcMain.handle(
 // ════════════════════════════════════════════════════════════════════════════
 
 app.whenReady().then(async () => {
+  // ════════════════════════════════════════════════════════════════════════════
+  // INICIALIZACIÓN: Sistema de Exclusividad de Puertos
+  // ════════════════════════════════════════════════════════════════════════════
+
+  try {
+    logger.info('Inicializando sistema de exclusividad de puertos...');
+    const instanceManager = initializeInstanceManager();
+    logger.info(
+      `✅ Sistema de exclusividad de puertos inicializado - Instancia ${instanceManager.instanceNumber}`
+    );
+  } catch (error) {
+    logger.error('❌ ERROR FATAL: No se pudo inicializar sistema de exclusividad de puertos', {
+      error: error.message,
+      stack: error.stack
+    });
+
+    // Mostrar diálogo de error
+    const { dialog } = require('electron');
+    dialog.showErrorBox(
+      'Error de Inicialización',
+      `No se pudo inicializar el sistema de exclusividad de puertos:\n\n${error.message}\n\nLa aplicación se cerrará.`
+    );
+
+    app.quit();
+    return;
+  }
+
   // Crear menús nativos del OS
   createApplicationMenu();
 
   // Iniciar servidor de API (para endpoints como HeyGen token)
-  startAPIServer();
+  await startAPIServer();
 
   // Inicializar Model Router (crítico, cargar primero)
   initializeModelRouter();
@@ -2313,6 +2659,16 @@ app.on('before-quit', () => {
   if (apiHttpServer) {
     apiHttpServer.close(() => {
       logger.info('API Server cerrado');
+
+      // Liberar recursos del API Server (pool y shield)
+      if (global.apiServerPortManager && global.apiServerPort) {
+        global.apiServerPortManager.releasePort();
+        logger.info(`Puerto ${global.apiServerPort} del API Server liberado del pool`);
+      }
+      if (global.apiServerShield && global.apiServerPort) {
+        const shieldManager = getPortShieldManager();
+        shieldManager.removeShield(global.apiServerPort);
+      }
     });
   }
   if (mcpServer && mcpServer.server) {

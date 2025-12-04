@@ -6,6 +6,16 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', 'qwen-valencia.env') });
 
+// Lazy load instance manager para evitar dependencias circulares
+let _instanceManager = null;
+function getInstanceManager() {
+  if (!_instanceManager) {
+    const { getInstanceManager: _getInstanceManager } = require('../utils/instance-manager');
+    _instanceManager = _getInstanceManager();
+  }
+  return _instanceManager;
+}
+
 /**
  * Valida que una variable de entorno esté presente
  */
@@ -51,7 +61,10 @@ function getEnvArray(key, defaultValue = []) {
   if (!value) {
     return defaultValue;
   }
-  return value.split(',').map(item => item.trim()).filter(item => item.length > 0);
+  return value
+    .split(',')
+    .map(item => item.trim())
+    .filter(item => item.length > 0);
 }
 
 /**
@@ -62,7 +75,7 @@ const config = {
   environment: process.env.NODE_ENV || 'development',
   isDevelopment: (process.env.NODE_ENV || 'development') === 'development',
   isProduction: process.env.NODE_ENV === 'production',
-  
+
   // Groq API
   groq: {
     apiKey: process.env.GROQ_API_KEY || '',
@@ -73,7 +86,7 @@ const config = {
     maxRequestsPerKey: getEnvNumber('GROQ_MAX_REQUESTS_PER_KEY', 4),
     blockDuration: getEnvNumber('GROQ_BLOCK_DURATION', 60000)
   },
-  
+
   // Ollama
   ollama: {
     baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
@@ -84,44 +97,49 @@ const config = {
     cacheTTL: getEnvNumber('OLLAMA_CACHE_TTL', 1800000),
     maxCacheSize: getEnvNumber('OLLAMA_MAX_CACHE_SIZE', 200)
   },
-  
+
   // MCP Universal
   mcp: {
     port: getEnvNumber('MCP_PORT', 6000),
     secretKey: process.env.MCP_SECRET_KEY || 'qwen_valencia_mcp_secure_2025',
     timeout: getEnvNumber('MCP_TIMEOUT', 300000)
   },
-  
+
   // API Server (main.js)
   api: {
-    port: getEnvNumber('API_PORT', 3000),
+    port: getEnvNumber('API_PORT', 9000),
     cors: {
       origin: process.env.CORS_ORIGIN || '*',
       credentials: getEnvBoolean('CORS_CREDENTIALS', true),
       methods: getEnvArray('CORS_METHODS', ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS']),
-      headers: getEnvArray('CORS_HEADERS', ['Content-Type', 'Authorization', 'mcp-secret', 'X-Requested-With'])
+      headers: getEnvArray('CORS_HEADERS', [
+        'Content-Type',
+        'Authorization',
+        'mcp-secret',
+        'X-Requested-With'
+      ])
     }
   },
-  
+
   // DeepGram
   deepgram: {
     apiKey: process.env.DEEPGRAM_API_KEY || ''
   },
-  
+
   // Cartesia
   cartesia: {
     apiKey: process.env.CARTESIA_API_KEY || '',
     voiceId: process.env.CARTESIA_VOICE_ID || ''
   },
-  
+
   // HeyGen
   heygen: {
     apiKey: process.env.HEYGEN_API_KEY || ''
   },
-  
+
   // Mode
   mode: process.env.MODE || 'auto',
-  
+
   // Rate Limiting
   rateLimit: {
     windowMs: getEnvNumber('RATE_LIMIT_WINDOW_MS', 60000),
@@ -129,27 +147,27 @@ const config = {
     standardHeaders: getEnvBoolean('RATE_LIMIT_STANDARD_HEADERS', true),
     legacyHeaders: getEnvBoolean('RATE_LIMIT_LEGACY_HEADERS', false)
   },
-  
+
   // Cache
   cache: {
     ttl: getEnvNumber('CACHE_TTL', 300000),
     maxSize: getEnvNumber('CACHE_MAX_SIZE', 100)
   },
-  
+
   // Security
   security: {
     enableHelmet: getEnvBoolean('SECURITY_ENABLE_HELMET', true),
     corsOrigin: process.env.CORS_ORIGIN || '*',
     trustProxy: getEnvBoolean('TRUST_PROXY', false)
   },
-  
+
   // Logging
   logging: {
     level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
     enableJSON: getEnvBoolean('LOG_JSON', process.env.NODE_ENV === 'production'),
     enableColors: getEnvBoolean('LOG_COLORS', process.env.NODE_ENV !== 'production')
   },
-  
+
   // Metrics
   metrics: {
     enabled: getEnvBoolean('METRICS_ENABLED', true),
@@ -163,26 +181,26 @@ const config = {
  */
 function validateConfig() {
   const errors = [];
-  
+
   // Validar Groq API Key (al menos una)
   if (config.groq.apiKeys.length === 0 && !config.groq.apiKey) {
     errors.push('GROQ_API_KEY no configurada (al menos una key requerida)');
   }
-  
+
   // Validar puertos únicos
   const ports = [config.groq.port, config.ollama.port, config.mcp.port, config.api.port];
   const duplicates = ports.filter((port, index) => ports.indexOf(port) !== index);
   if (duplicates.length > 0) {
     errors.push(`Puertos duplicados detectados: ${duplicates.join(', ')}`);
   }
-  
+
   // Validar URLs
   try {
     new URL(config.ollama.baseUrl);
   } catch (e) {
     errors.push(`OLLAMA_BASE_URL inválida: ${config.ollama.baseUrl}`);
   }
-  
+
   if (errors.length > 0) {
     throw new Error(`Errores de configuración:\n${errors.join('\n')}`);
   }
@@ -231,7 +249,7 @@ function getServiceConfig(serviceName) {
       security: config.security
     }
   };
-  
+
   return serviceConfigs[serviceName] || {};
 }
 
@@ -247,13 +265,79 @@ try {
   }
 }
 
+/**
+ * Obtiene pools de puertos para un servicio usando el instance manager
+ * @param {string} serviceName - Nombre del servicio
+ * @returns {Array<number>} - Pool de puertos exclusivos
+ */
+function getServicePortPool(serviceName) {
+  try {
+    const instanceManager = getInstanceManager();
+
+    // Si no está inicializado, retornar valores por defecto del config
+    if (!instanceManager.instanceNumber) {
+      // Valores por defecto para compatibilidad
+      const defaultPools = {
+        'mcp-universal': [config.mcp.port],
+        'ollama-mcp': [config.ollama.port],
+        'groq-api': [config.groq.port],
+        'sandra-ia': [6004], // Valor por defecto
+        conversational: [7000, 7001, 7002, 7003, 7004],
+        'api-server': [config.api.port]
+      };
+      return defaultPools[serviceName] || [config.mcp.port];
+    }
+
+    return instanceManager.getPortPool(serviceName);
+  } catch (error) {
+    console.warn('Error obteniendo pool de puertos, usando valores por defecto:', error.message);
+    // Fallback a valores estáticos
+    const fallbackPools = {
+      'mcp-universal': [config.mcp.port],
+      'ollama-mcp': [config.ollama.port],
+      'groq-api': [config.groq.port],
+      'sandra-ia': [6004],
+      conversational: [7000, 7001, 7002, 7003, 7004],
+      'api-server': [config.api.port]
+    };
+    return fallbackPools[serviceName] || [config.mcp.port];
+  }
+}
+
+/**
+ * Inicializa el instance manager y calcula pools de puertos
+ * @returns {Object} - Instance manager inicializado
+ */
+function initializeInstanceManager() {
+  try {
+    const instanceManager = getInstanceManager();
+
+    // Detectar número de instancia
+    const instanceNumber = instanceManager.detectInstanceNumber();
+
+    // Calcular pools de puertos
+    const portPools = instanceManager.calculatePortPools();
+
+    // Iniciar heartbeat
+    instanceManager.startHeartbeat();
+
+    console.log(`✅ Instancia ${instanceNumber} inicializada con pools de puertos exclusivos`);
+
+    return instanceManager;
+  } catch (error) {
+    console.error('❌ Error inicializando instance manager:', error.message);
+    throw error;
+  }
+}
+
 module.exports = {
   config,
   getServiceConfig,
+  getServicePortPool,
+  initializeInstanceManager,
   validateConfig,
   requireEnv,
   getEnvNumber,
   getEnvBoolean,
   getEnvArray
 };
-

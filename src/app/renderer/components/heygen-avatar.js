@@ -1,8 +1,8 @@
 /**
  * HEYGEN AVATAR COMPONENT - Componente Frontend para Avatar Streaming
- * 
+ *
  * DESHABILITADO TEMPORALMENTE
- * 
+ *
  * Usa el SDK de HeyGen desde CDN para streaming de avatar en tiempo real
  * Avatar público: Elena (e710fd953c094f398dd7e94c3554254f)
  * Voice ID: Español (2d5b0e6cf361460aa7fc47e3cee4b30c)
@@ -24,7 +24,7 @@ class HeyGenAvatar {
       console.warn('⚠️ HeyGen Avatar deshabilitado');
       return;
     }
-    
+
     this.avatar = null;
     this.isInitialized = false;
     this.isStreaming = false;
@@ -39,7 +39,7 @@ class HeyGenAvatar {
     if (!HEYGEN_ENABLED) {
       return false;
     }
-    
+
     if (this.sdkLoaded) {
       return true;
     }
@@ -62,17 +62,21 @@ class HeyGenAvatar {
         window.TaskType = TaskType;
         window.dispatchEvent(new Event('heygen-sdk-loaded'));
       `;
-      
+
       script.onerror = () => {
         console.error('❌ Error cargando SDK de HeyGen');
         reject(new Error('Error cargando SDK de HeyGen'));
       };
 
-      window.addEventListener('heygen-sdk-loaded', () => {
-        this.sdkLoaded = true;
-        console.log('✅ SDK de HeyGen cargado');
-        resolve(true);
-      }, { once: true });
+      window.addEventListener(
+        'heygen-sdk-loaded',
+        () => {
+          this.sdkLoaded = true;
+          console.log('✅ SDK de HeyGen cargado');
+          resolve(true);
+        },
+        { once: true }
+      );
 
       document.head.appendChild(script);
     });
@@ -84,7 +88,7 @@ class HeyGenAvatar {
   async fetchAccessToken() {
     try {
       // Usar el endpoint expuesto por el main process
-      const response = await fetch('http://localhost:3000/api/heygen/token', {
+      const response = await fetch('http://localhost:9000/api/heygen/token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -96,7 +100,7 @@ class HeyGenAvatar {
       }
 
       const data = await response.json();
-      
+
       if (data.success && data.token) {
         return data.token;
       }
@@ -179,7 +183,7 @@ class HeyGenAvatar {
       }
 
       const { TaskType } = window;
-      
+
       await this.avatar.speak({
         text: text.trim(),
         task_type: TaskType.TALK
@@ -274,4 +278,3 @@ if (typeof module !== 'undefined' && module.exports) {
     stopAvatar
   };
 }
-

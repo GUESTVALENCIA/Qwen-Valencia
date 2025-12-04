@@ -21,7 +21,8 @@ class Logger {
   constructor(options = {}) {
     this.service = options.service || 'qwen-valencia-frontend';
     this.environment = options.environment || 'development';
-    this.minLevel = options.minLevel || (this.environment === 'production' ? LogLevel.INFO : LogLevel.DEBUG);
+    this.minLevel =
+      options.minLevel || (this.environment === 'production' ? LogLevel.INFO : LogLevel.DEBUG);
     this.enableColors = options.enableColors !== false && this.environment !== 'production';
     this.enableJSON = options.enableJSON || this.environment === 'production';
     this.correlationId = null;
@@ -98,21 +99,21 @@ class Logger {
     }
 
     const colors = {
-      debug: '\x1b[36m',   // Cyan
-      info: '\x1b[32m',    // Green
-      warn: '\x1b[33m',    // Yellow
-      error: '\x1b[31m',   // Red
-      fatal: '\x1b[35m'    // Magenta
+      debug: '\x1b[36m', // Cyan
+      info: '\x1b[32m', // Green
+      warn: '\x1b[33m', // Yellow
+      error: '\x1b[31m', // Red
+      fatal: '\x1b[35m' // Magenta
     };
     const reset = '\x1b[0m';
     const color = colors[level] || '';
 
     let output = `${color}[${level.toUpperCase()}]${reset} ${message}`;
-    
+
     if (Object.keys(data).length > 0) {
       output += ` ${JSON.stringify(data, null, 2)}`;
     }
-    
+
     if (this.correlationId) {
       output += ` [correlationId: ${this.correlationId}]`;
     }
@@ -129,7 +130,7 @@ class Logger {
     }
 
     const formatted = this.formatMessage(level, message, data);
-    
+
     // Usar console apropiado según nivel
     switch (level) {
       case LogLevel.DEBUG:
@@ -150,7 +151,10 @@ class Logger {
     }
 
     // En producción, enviar errores críticos al backend (opcional)
-    if (this.environment === 'production' && (level === LogLevel.ERROR || level === LogLevel.FATAL)) {
+    if (
+      this.environment === 'production' &&
+      (level === LogLevel.ERROR || level === LogLevel.FATAL)
+    ) {
       this.sendToBackend(level, message, data);
     }
   }
@@ -162,7 +166,7 @@ class Logger {
     try {
       // Solo enviar errores críticos, no todos los logs
       if (level === LogLevel.FATAL || (level === LogLevel.ERROR && data.critical)) {
-        await fetch('http://localhost:3000/api/logs', {
+        await fetch('http://localhost:9000/api/logs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -267,4 +271,3 @@ if (typeof module !== 'undefined' && module.exports) {
     defaultLogger
   };
 }
-

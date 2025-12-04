@@ -12,11 +12,11 @@ class StateManager {
   constructor(initialState = {}, options = {}) {
     // FIX: Definir enableImmutable ANTES de llamar deepFreeze() para que funcione correctamente
     this.enableImmutable = options.enableImmutable !== false; // Por defecto habilitado
-    
+
     // FIX: Asignar logger ANTES de usar deepCopy para que esté disponible si hay errores
     // deepCopy puede lanzar errores que necesitan logger.error()
     this.logger = (typeof window !== 'undefined' && window.defaultLogger) || console;
-    
+
     // FIX: Crear copia profunda del estado inicial antes de congelarlo
     // Esto evita problemas si initialState ya está congelado o tiene objetos anidados congelados
     // FIX: Manejar referencias circulares de forma elegante sin fallar el constructor
@@ -89,7 +89,9 @@ class StateManager {
     if (visited.has(obj)) {
       // FIX: Lanzar error en lugar de retornar objeto no congelado para mantener consistencia con deepCopy
       // Esto previene que objetos con referencias circulares queden mutables, rompiendo la garantía de inmutabilidad
-      const error = new Error('Referencia circular detectada en deepFreeze. El estado contiene referencias circulares que no pueden ser congeladas.');
+      const error = new Error(
+        'Referencia circular detectada en deepFreeze. El estado contiene referencias circulares que no pueden ser congeladas.'
+      );
       this.logger.error('Referencia circular detectada en deepFreeze', {
         error: error.message,
         objectType: obj.constructor?.name || typeof obj
@@ -102,18 +104,20 @@ class StateManager {
 
     // FIX: No congelar objetos built-in especiales que tienen contratos de mutabilidad
     // Date, Map, Set, WeakMap, WeakSet, RegExp, etc. no deben congelarse
-    if (obj instanceof Date || 
-        obj instanceof Map || 
-        obj instanceof Set || 
-        obj instanceof WeakMap || 
-        obj instanceof WeakSet || 
-        obj instanceof RegExp ||
-        obj instanceof Error ||
-        obj instanceof Promise) {
+    if (
+      obj instanceof Date ||
+      obj instanceof Map ||
+      obj instanceof Set ||
+      obj instanceof WeakMap ||
+      obj instanceof WeakSet ||
+      obj instanceof RegExp ||
+      obj instanceof Error ||
+      obj instanceof Promise
+    ) {
       return obj; // Retornar sin congelar
     }
 
-    // FIX: No congelar funciones (aunque typeof 'function' !== 'object', 
+    // FIX: No congelar funciones (aunque typeof 'function' !== 'object',
     // algunas propiedades de objetos pueden ser funciones)
     if (typeof obj === 'function') {
       return obj;
@@ -130,14 +134,18 @@ class StateManager {
       // Excluir funciones y objetos built-in especiales
       if (value !== null && typeof value === 'object') {
         // Verificar que no sea un objeto built-in especial antes de congelar recursivamente
-        if (!(value instanceof Date || 
-              value instanceof Map || 
-              value instanceof Set || 
-              value instanceof WeakMap || 
-              value instanceof WeakSet || 
-              value instanceof RegExp ||
-              value instanceof Error ||
-              value instanceof Promise)) {
+        if (
+          !(
+            value instanceof Date ||
+            value instanceof Map ||
+            value instanceof Set ||
+            value instanceof WeakMap ||
+            value instanceof WeakSet ||
+            value instanceof RegExp ||
+            value instanceof Error ||
+            value instanceof Promise
+          )
+        ) {
           this.deepFreeze(value, visited);
         }
       }
@@ -171,7 +179,9 @@ class StateManager {
     if (visited.has(obj)) {
       // FIX: Lanzar error en lugar de retornar null para evitar cambios silenciosos en la estructura del estado
       // Esto previene que código que espera una propiedad exista reciba null inesperadamente
-      const error = new Error('Referencia circular detectada en deepCopy. El estado contiene referencias circulares que no pueden ser copiadas.');
+      const error = new Error(
+        'Referencia circular detectada en deepCopy. El estado contiene referencias circulares que no pueden ser copiadas.'
+      );
       this.logger.error('Referencia circular detectada en deepCopy', {
         error: error.message,
         objectType: obj.constructor?.name || typeof obj
@@ -219,10 +229,13 @@ class StateManager {
       previousState = this.deepCopy(this.state);
     } catch (error) {
       // Si hay referencias circulares, usar estado vacío como fallback
-      this.logger.warn('Estado contiene referencias circulares en set(), usando estado vacío como previousState', {
-        error: error.message,
-        key
-      });
+      this.logger.warn(
+        'Estado contiene referencias circulares en set(), usando estado vacío como previousState',
+        {
+          error: error.message,
+          key
+        }
+      );
       previousState = {};
     }
 
@@ -248,7 +261,7 @@ class StateManager {
     let processedState = newState;
     for (const middleware of this.middleware) {
       const middlewareResult = middleware(processedState, action, { key, value, previousState });
-      
+
       // FIX: Verificar si el middleware retornó el mismo objeto (frozen o no)
       // Si es así, crear una copia mutable para permitir futuras mutaciones
       if (middlewareResult === processedState || middlewareResult === this.state) {
@@ -258,7 +271,7 @@ class StateManager {
         // Middleware retornó un nuevo objeto, usar ese
         processedState = middlewareResult;
       }
-      
+
       // Validar que processedState es un objeto válido
       if (!processedState || typeof processedState !== 'object') {
         this.logger.warn('Middleware retornó valor inválido, usando estado anterior', {
@@ -293,16 +306,19 @@ class StateManager {
     let previousState;
     let newState;
     const changes = {};
-    
+
     try {
       // Crear copia profunda del estado anterior
       previousState = this.deepCopy(this.state);
     } catch (error) {
       // Si hay referencias circulares, usar estado vacío como fallback
-      this.logger.warn('Estado contiene referencias circulares en update(), usando estado vacío como previousState', {
-        error: error.message,
-        updateKeys: Object.keys(updates || {})
-      });
+      this.logger.warn(
+        'Estado contiene referencias circulares en update(), usando estado vacío como previousState',
+        {
+          error: error.message,
+          updateKeys: Object.keys(updates || {})
+        }
+      );
       previousState = {};
     }
 
@@ -330,7 +346,7 @@ class StateManager {
     let processedState = newState;
     for (const middleware of this.middleware) {
       const middlewareResult = middleware(processedState, action, { changes, previousState });
-      
+
       // FIX: Verificar si el middleware retornó el mismo objeto (frozen o no)
       // Si es así, crear una copia mutable para permitir futuras mutaciones
       if (middlewareResult === processedState || middlewareResult === this.state) {
@@ -340,7 +356,7 @@ class StateManager {
         // Middleware retornó un nuevo objeto, usar ese
         processedState = middlewareResult;
       }
-      
+
       // Validar que processedState es un objeto válido
       if (!processedState || typeof processedState !== 'object') {
         this.logger.warn('Middleware retornó valor inválido, usando estado anterior', {
@@ -569,7 +585,7 @@ function getStateManager() {
       deepgramConnection: null,
       isRecording: false,
       recordingStartTime: null,
-      recordingMaxTime: 20 * 60 * 1000,
+      recordingMaxTime: 30000, // 30 segundos (como ChatGPT)
       ttsInterval: null,
       lastTTSAt: null,
       voiceCallActive: false,

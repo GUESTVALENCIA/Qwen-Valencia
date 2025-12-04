@@ -2,9 +2,9 @@
  * ════════════════════════════════════════════════════════════════════════════
  * QWEN-VALENCIA - PRELOAD SCRIPT
  * ════════════════════════════════════════════════════════════════════════════
- * 
+ *
  * IPC Bridge entre renderer y main process
- * 
+ *
  * ════════════════════════════════════════════════════════════════════════════
  */
 
@@ -20,11 +20,11 @@ contextBridge.exposeInMainWorld('qwenValencia', {
     // Compatibilidad con ambas firmas
     if (typeof params === 'string') {
       // Firma antigua: routeMessage(text, modality, attachments, options)
-      return await ipcRenderer.invoke('route-message', { 
-        text: params, 
-        modality: modality || 'text', 
-        attachments: attachments || [], 
-        options: options || {} 
+      return await ipcRenderer.invoke('route-message', {
+        text: params,
+        modality: modality || 'text',
+        attachments: attachments || [],
+        options: options || {}
       });
     } else {
       // Firma nueva: routeMessage({ text, attachments, model, useAPI })
@@ -49,14 +49,14 @@ contextBridge.exposeInMainWorld('qwenValencia', {
   /**
    * Lee un archivo
    */
-  readFile: async (filePath) => {
+  readFile: async filePath => {
     return await ipcRenderer.invoke('read-file', { filePath });
   },
 
   /**
    * Lista archivos de un directorio
    */
-  listFiles: async (dirPath) => {
+  listFiles: async dirPath => {
     return await ipcRenderer.invoke('list-files', { dirPath });
   },
 
@@ -70,7 +70,7 @@ contextBridge.exposeInMainWorld('qwenValencia', {
   /**
    * Cartesia TTS (compatible con app.js)
    */
-  cartesiaTTS: async (params) => {
+  cartesiaTTS: async params => {
     return await ipcRenderer.invoke('cartesia-tts', params);
   },
 
@@ -84,14 +84,14 @@ contextBridge.exposeInMainWorld('qwenValencia', {
   /**
    * Transcribir audio
    */
-  transcribeAudio: async (audioData) => {
+  transcribeAudio: async audioData => {
     return await ipcRenderer.invoke('transcribe-audio', audioData);
   },
 
   /**
    * Transcribir audio con DeepGram (compatible con app.js)
    */
-  deepgramTranscribe: async (params) => {
+  deepgramTranscribe: async params => {
     return await ipcRenderer.invoke('deepgram-transcribe', params);
   },
 
@@ -112,21 +112,21 @@ contextBridge.exposeInMainWorld('qwenValencia', {
   /**
    * Enviar audio a DeepGram Live
    */
-  deepgramSendAudio: async (audioBase64) => {
+  deepgramSendAudio: async audioBase64 => {
     return await ipcRenderer.invoke('deepgram-send-audio', { audio: audioBase64 });
   },
 
   /**
    * Listener para transcripciones de DeepGram
    */
-  onDeepgramTranscript: (callback) => {
+  onDeepgramTranscript: callback => {
     ipcRenderer.on('deepgram-transcript', (event, data) => callback(data));
   },
 
   /**
    * Listener para errores de DeepGram
    */
-  onDeepgramError: (callback) => {
+  onDeepgramError: callback => {
     ipcRenderer.on('deepgram-error', (event, error) => callback(error));
   },
 
@@ -135,7 +135,7 @@ contextBridge.exposeInMainWorld('qwenValencia', {
    */
   getHeyGenToken: async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/heygen/token', {
+      const response = await fetch('http://localhost:9000/api/heygen/token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -177,7 +177,7 @@ contextBridge.exposeInMainWorld('qwenValencia', {
   /**
    * Crear ventana flotante para avatar
    */
-  createFloatingAvatarWindow: async (videoSrc) => {
+  createFloatingAvatarWindow: async videoSrc => {
     return await ipcRenderer.invoke('create-floating-avatar-window', { videoSrc });
   },
 
@@ -198,26 +198,26 @@ contextBridge.exposeInMainWorld('qwenValencia', {
   /**
    * Enviar audio al stream de conversación
    */
-  sendAudioToConversation: async (audioBuffer) => {
+  sendAudioToConversation: async audioBuffer => {
     return await ipcRenderer.invoke('send-audio-to-conversation', { audioBuffer });
   },
 
   /**
    * Listeners para eventos de conversación
    */
-  onConversationTranscript: (callback) => {
+  onConversationTranscript: callback => {
     ipcRenderer.on('conversation-transcript', (event, data) => callback(data));
   },
 
-  onConversationResponse: (callback) => {
+  onConversationResponse: callback => {
     ipcRenderer.on('conversation-response', (event, data) => callback(data));
   },
 
-  onConversationState: (callback) => {
+  onConversationState: callback => {
     ipcRenderer.on('conversation-state', (event, data) => callback(data));
   },
 
-  onConversationError: (callback) => {
+  onConversationError: callback => {
     ipcRenderer.on('conversation-error', (event, data) => callback(data));
   },
 
@@ -259,32 +259,32 @@ contextBridge.exposeInMainWorld('qwenValencia', {
   /**
    * Actualizar estado compartido en el backend
    */
-  updateSharedState: async (updates) => {
+  updateSharedState: async updates => {
     return await ipcRenderer.invoke('update-shared-state', updates);
   },
 
   /**
    * Sincronizar estado completo (bidireccional)
    */
-  syncState: async (frontendState) => {
+  syncState: async frontendState => {
     return await ipcRenderer.invoke('sync-state', frontendState);
   },
 
   /**
    * Enviar cambio de estado al backend
    */
-  sendStateChange: (stateUpdate) => {
+  sendStateChange: stateUpdate => {
     ipcRenderer.send('state-changed', stateUpdate);
   },
 
   /**
    * Listeners para eventos de sincronización de estado
    */
-  onSharedStateUpdated: (callback) => {
+  onSharedStateUpdated: callback => {
     ipcRenderer.on('shared-state-updated', (event, state) => callback(state));
   },
 
-  onStateSynced: (callback) => {
+  onStateSynced: callback => {
     ipcRenderer.on('state-synced', (event, state) => callback(state));
   },
 
@@ -365,10 +365,43 @@ contextBridge.exposeInMainWorld('qwenValencia', {
   /**
    * Cargar módulo bajo demanda
    */
-  loadLazyModule: async (moduleName) => {
+  loadLazyModule: async moduleName => {
     return await ipcRenderer.invoke('load-lazy-module', { moduleName });
+  },
+
+  /**
+   * ════════════════════════════════════════════════════════════════════════════
+   * CONFIGURATION MANAGEMENT - Gestión de Configuración de Modelos
+   * ════════════════════════════════════════════════════════════════════════════
+   */
+
+  /**
+   * Leer configuración de modelos desde config/models.json
+   */
+  readModelsConfig: async () => {
+    return await ipcRenderer.invoke('read-models-config');
+  },
+
+  /**
+   * Guardar configuración de modelos a config/models.json
+   */
+  saveModelsConfig: async config => {
+    return await ipcRenderer.invoke('save-models-config', config);
+  },
+
+  /**
+   * Leer configuración de orquestador
+   */
+  readOrchestratorConfig: async () => {
+    return await ipcRenderer.invoke('read-orchestrator-config');
+  },
+
+  /**
+   * Listar archivos de configuración disponibles
+   */
+  listConfigFiles: async () => {
+    return await ipcRenderer.invoke('list-config-files');
   }
 });
 
 console.log('✅ Preload script cargado');
-

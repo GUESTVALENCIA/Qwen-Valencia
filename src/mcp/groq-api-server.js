@@ -16,12 +16,15 @@ const crypto = require('crypto');
 const { RateLimiterFactory } = require('../utils/rate-limiter');
 const { LoggerFactory } = require('../utils/logger');
 const { MetricsFactory } = require('../utils/metrics');
-const { getServiceConfig } = require('../config');
+const { getServiceConfig, getServicePortPool } = require('../config');
 const SecurityMiddleware = require('../middleware/security');
 const CorrelationMiddleware = require('../middleware/correlation');
 const ValidatorMiddleware = require('../middleware/validator');
 const { setupSwagger } = require('../utils/swagger-setup');
 const { StreamManager } = require('../utils/stream-manager');
+const { PortPoolManager } = require('../utils/port-pool-manager');
+const { getPortShieldManager } = require('../utils/port-shield');
+const { getInstanceManager } = require('../utils/instance-manager');
 const path = require('path');
 const os = require('os');
 
@@ -31,7 +34,14 @@ class GroqAPIServer {
 
     // Cargar configuración centralizada
     const serviceConfig = getServiceConfig('groq-api-server');
-    this.port = serviceConfig.port || 6003;
+
+    // Obtener pool de puertos exclusivos
+    const portPool = getServicePortPool('groq-api');
+    const instanceManager = getInstanceManager();
+
+    this.portPoolManager = null;
+    this.port = null; // Se asignará al adquirir del pool
+    this.shield = null;
 
     // Logger y métricas
     this.logger = LoggerFactory.create('groq-api-server');
@@ -123,8 +133,9 @@ class GroqAPIServer {
     this.cleanupIntervals.push(cacheCleanupInterval);
 
     this.logger.info('Groq API Server inicializado', {
-      port: this.port,
-      apiKeysCount: this.apiKeys.length
+      portPool: getServicePortPool('groq-api'),
+      apiKeysCount: this.apiKeys.length,
+      instanceId: getInstanceManager()?.instanceId || 'pending'
     });
   }
 
@@ -567,28 +578,115 @@ class GroqAPIServer {
    * Iniciar servidor
    */
   async start() {
-    return new Promise((resolve, reject) => {
-      try {
-        this.server = this.app.listen(this.port, () => {
-          this.logger.info(`Groq API Server escuchando en puerto ${this.port}`);
-          this.setupGracefulShutdown();
-          resolve(true);
+    try {
+      // Obtener pool de puertos y crear pool manager
+      const portPool = getServicePortPool('groq-api');
+      const instanceManager = getInstanceManager();
+
+      if (!instanceManager || !instanceManager.instanceNumber) {
+        throw new Error(
+          'Instance manager no inicializado. La aplicación debe inicializarse primero.'
+        );
+      }
+
+      this.portPoolManager = new PortPoolManager(
+        'groq-api',
+        portPool,
+        process.pid,
+        instanceManager.instanceId
+      );
+
+      // Adquirir puerto del pool con rotación automática
+      this.port = await this.portPoolManager.acquirePortFromPool();
+
+      if (!this.port) {
+        const acquisitionInfo = this.portPoolManager.getAcquisitionInfo();
+        this.logger.error('ERROR FATAL: No se pudo adquirir ningún puerto del pool', {
+          service: 'groq-api',
+          portPool,
+          attemptedPorts: acquisitionInfo.attemptedPorts,
+          instanceId: instanceManager.instanceId
         });
 
-        this.server.on('error', error => {
-          if (error.code === 'EADDRINUSE') {
-            this.logger.error(`Puerto ${this.port} ya está en uso`, null, {
-              suggestion: 'Intenta detener el proceso que usa el puerto'
-            });
-            reject(false);
-          } else {
-            reject(error);
-          }
-        });
-      } catch (error) {
-        reject(error);
+        throw new Error(
+          `No se pudo adquirir ningún puerto del pool de Groq API. ` +
+            `Pool: [${portPool.join(', ')}]. ` +
+            `Todos los puertos están bloqueados exclusivamente.`
+        );
       }
-    });
+
+      // Activar shield de protección del puerto
+      const shieldManager = getPortShieldManager();
+      this.shield = shieldManager.createShield(
+        this.port,
+        process.pid,
+        instanceManager.instanceId,
+        port => {
+          this.logger.error(
+            `SHIELD PERDIDO: Puerto ${port} ya no está bajo nuestro control. Cerrando servidor.`
+          );
+          this.stop();
+        }
+      );
+
+      // Iniciar servidor en el puerto adquirido
+      return new Promise((resolve, reject) => {
+        try {
+          this.server = this.app.listen(this.port, () => {
+            this.logger.info(`✅ Groq API Server escuchando en puerto ${this.port}`, {
+              port: this.port,
+              portPool,
+              instanceId: instanceManager.instanceId
+            });
+            this.setupGracefulShutdown();
+            resolve(true);
+          });
+
+          this.server.on('error', error => {
+            if (error.code === 'EADDRINUSE') {
+              this.logger.error(
+                `ERROR FATAL: Puerto ${this.port} está en uso después de adquirir lock`,
+                {
+                  port: this.port,
+                  error: error.message
+                }
+              );
+
+              // Liberar lock y shield
+              if (this.portPoolManager) {
+                this.portPoolManager.releasePort();
+              }
+              if (this.shield) {
+                const shieldManager = getPortShieldManager();
+                shieldManager.removeShield(this.port);
+              }
+
+              reject(new Error(`Puerto ${this.port} está en uso. Conflicto detectado.`));
+            } else {
+              reject(error);
+            }
+          });
+        } catch (error) {
+          reject(error);
+        }
+      });
+    } catch (error) {
+      this.logger.error('Error iniciando Groq API Server', {
+        error: error.message,
+        stack: error.stack
+      });
+
+      // Liberar recursos en caso de error
+      if (this.portPoolManager && this.port) {
+        this.portPoolManager.releasePort();
+      }
+      if (this.shield && this.port) {
+        const shieldManager = getPortShieldManager();
+        shieldManager.removeShield(this.port);
+      }
+
+      throw error;
+    }
   }
 
   /**
@@ -598,12 +696,8 @@ class GroqAPIServer {
     const shutdown = async signal => {
       this.logger.info(`Recibida señal ${signal}, iniciando cierre graceful...`);
 
-      // Detener aceptar nuevas conexiones
-      if (this.server) {
-        this.server.close(() => {
-          this.logger.info('Servidor HTTP cerrado');
-        });
-      }
+      // Usar método stop() para liberar todos los recursos
+      await this.stop();
 
       // Esperar a que requests en curso terminen (máximo 30 segundos)
       const maxWait = 30000;
@@ -617,8 +711,6 @@ class GroqAPIServer {
         this.logger.warn(`${this.currentRequests} requests aún en curso después del timeout`);
       }
 
-      // Limpiar recursos
-      this.cache.clear();
       this.logger.info('Cierre graceful completado');
 
       process.exit(0);
@@ -632,6 +724,8 @@ class GroqAPIServer {
    * Detener servidor
    */
   async stop() {
+    this.logger.info('Deteniendo Groq API Server...');
+
     // Limpiar todos los intervals
     this.cleanupIntervals.forEach(interval => {
       clearInterval(interval);
@@ -642,16 +736,50 @@ class GroqAPIServer {
     if (this.server) {
       return new Promise(resolve => {
         this.server.close(() => {
-          this.logger.info('Groq API Server detenido');
+          this.logger.info('Servidor HTTP cerrado');
+
+          // Liberar shield
+          if (this.shield && this.port) {
+            const shieldManager = getPortShieldManager();
+            shieldManager.removeShield(this.port);
+          }
+
+          // Liberar puerto del pool
+          if (this.portPoolManager) {
+            this.portPoolManager.releasePort();
+            this.logger.info(`Puerto ${this.port} liberado del pool`);
+          }
+
+          // Limpiar recursos adicionales
+          if (this.cache) {
+            this.cache.destroy();
+          }
+
+          // Cerrar pool de conexiones HTTP si existe
+          if (this.httpAgent) {
+            this.httpAgent.destroy();
+          }
+
           resolve();
         });
       });
     }
 
-    // Limpiar recursos
-    this.cache.destroy(); // LRUCache tiene método destroy para limpiar intervals
+    // Liberar recursos incluso si el servidor no estaba corriendo
+    if (this.shield && this.port) {
+      const shieldManager = getPortShieldManager();
+      shieldManager.removeShield(this.port);
+    }
 
-    // Cerrar pool de conexiones HTTP si existe
+    if (this.portPoolManager) {
+      this.portPoolManager.releasePort();
+    }
+
+    // Limpiar recursos adicionales
+    if (this.cache) {
+      this.cache.destroy();
+    }
+
     if (this.httpAgent) {
       this.httpAgent.destroy();
     }

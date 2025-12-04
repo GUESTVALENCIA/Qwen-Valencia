@@ -1,432 +1,596 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- Content Security Policy mejorado - Enterprise Level -->
     <!-- unsafe-inline y unsafe-eval eliminados: todos los event listeners están en event-listeners.js -->
     <!-- style-src mantiene unsafe-inline para estilos inline necesarios -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' http://localhost:* https://api.groq.com https://api.deepseek.com https://*.openai.com https://*.anthropic.com; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;">
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' http://localhost:* https://api.groq.com https://api.deepseek.com https://*.openai.com https://*.anthropic.com; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;"
+    />
     <title>Qwen-Valencia</title>
-    <link rel="stylesheet" href="styles/main.css">
-    <link rel="stylesheet" href="styles/liquid-glass.css">
-    <link rel="stylesheet" href="styles/chat-input.css">
-</head>
-<body>
+    <link rel="stylesheet" href="styles/main.css" />
+    <link rel="stylesheet" href="styles/liquid-glass.css" />
+    <link rel="stylesheet" href="styles/chat-input.css" />
+  </head>
+  <body>
     <!-- TITLEBAR -->
     <div class="titlebar">
-        <div class="titlebar-drag">
-            <div class="titlebar-logo">Q</div>
-            <span class="titlebar-text">Qwen-Valencia</span>
-        </div>
-        <div class="titlebar-controls">
-            <button class="titlebar-btn" id="themeToggle" onclick="toggleTheme()" title="Tema">&#9789;</button>
-            <button class="titlebar-btn" onclick="window.qwenValencia?.minimize()">&#8722;</button>
-            <button class="titlebar-btn" onclick="window.qwenValencia?.maximize()">&#9633;</button>
-            <button class="titlebar-btn close" onclick="window.qwenValencia?.close()">&#10005;</button>
-        </div>
+      <div class="titlebar-drag">
+        <div class="titlebar-logo">Q</div>
+        <span class="titlebar-text">Qwen-Valencia</span>
+      </div>
+      <div class="titlebar-controls">
+        <button class="titlebar-btn" id="themeToggle" title="Tema">&#9789;</button>
+        <button class="titlebar-btn" id="minimizeBtn">&#8722;</button>
+        <button class="titlebar-btn" id="maximizeBtn">&#9633;</button>
+        <button class="titlebar-btn close" id="closeBtn">&#10005;</button>
+      </div>
     </div>
 
     <!-- MENU BAR - Estilo Cursor -->
     <div class="menu-bar">
-        <div class="menu-item" data-menu="file">
-            <span>Archivo</span>
-            <div class="menu-dropdown" id="menuFile">
-                <div class="menu-option" onclick="newChat()">Nuevo</div>
-                <div class="menu-option" onclick="openChat()">Abrir...</div>
-                <div class="menu-option" onclick="saveChat()">Guardar</div>
-                <div class="menu-option" onclick="saveChatAs()">Guardar como...</div>
-                <div class="menu-divider"></div>
-                <div class="menu-option" onclick="exportChat()">Exportar...</div>
-            </div>
+      <div class="menu-item" data-menu="file">
+        <span>Archivo</span>
+        <div class="menu-dropdown" id="menuFile">
+          <div class="menu-option" data-action="newChat">Nuevo</div>
+          <div class="menu-option" data-action="openChat">Abrir...</div>
+          <div class="menu-option" data-action="saveChat">Guardar</div>
+          <div class="menu-option" data-action="saveChatAs">Guardar como...</div>
+          <div class="menu-divider"></div>
+          <div class="menu-option" data-action="exportChat">Exportar...</div>
         </div>
-        <div class="menu-item" data-menu="edit">
-            <span>Editar</span>
-            <div class="menu-dropdown" id="menuEdit">
-                <div class="menu-option" onclick="contextCopy()">Copiar</div>
-                <div class="menu-option" onclick="contextPaste()">Pegar</div>
-                <div class="menu-option" onclick="contextCut()">Cortar</div>
-                <div class="menu-divider"></div>
-                <div class="menu-option" onclick="contextSelectAll()">Seleccionar todo</div>
-            </div>
+      </div>
+      <div class="menu-item" data-menu="edit">
+        <span>Editar</span>
+        <div class="menu-dropdown" id="menuEdit">
+          <div class="menu-option" data-action="contextCopy">Copiar</div>
+          <div class="menu-option" data-action="contextPaste">Pegar</div>
+          <div class="menu-option" data-action="contextCut">Cortar</div>
+          <div class="menu-divider"></div>
+          <div class="menu-option" data-action="contextSelectAll">Seleccionar todo</div>
         </div>
-        <div class="menu-item" data-menu="selection">
-            <span>Selección</span>
-            <div class="menu-dropdown" id="menuSelection">
-                <div class="menu-option" onclick="contextSelectAll()">Seleccionar todo</div>
-            </div>
+      </div>
+      <div class="menu-item" data-menu="selection">
+        <span>Selección</span>
+        <div class="menu-dropdown" id="menuSelection">
+          <div class="menu-option" data-action="contextSelectAll">Seleccionar todo</div>
         </div>
-        <div class="menu-item" data-menu="view">
-            <span>Ver</span>
-            <div class="menu-dropdown" id="menuView">
-                <div class="menu-option" onclick="toggleTheme()">Tema: <span id="themeMenuText">Oscuro</span></div>
-                <div class="menu-option" onclick="toggleSidebar()">Mostrar/Ocultar Sidebar</div>
-            </div>
+      </div>
+      <div class="menu-item" data-menu="view">
+        <span>Ver</span>
+        <div class="menu-dropdown" id="menuView">
+          <div class="menu-option" data-action="toggleTheme">
+            Tema: <span id="themeMenuText">Oscuro</span>
+          </div>
+          <div class="menu-option" data-action="toggleSidebar">Mostrar/Ocultar Sidebar</div>
         </div>
-        <div class="menu-item" data-menu="run">
-            <span>Ejecutar</span>
-            <div class="menu-dropdown" id="menuRun">
-                <div class="menu-option" onclick="executeCode()">Ejecutar código</div>
-                <div class="menu-option" onclick="executeCommand()">Ejecutar comando</div>
-            </div>
+      </div>
+      <div class="menu-item" data-menu="run">
+        <span>Ejecutar</span>
+        <div class="menu-dropdown" id="menuRun">
+          <div class="menu-option" data-action="executeCode">Ejecutar código</div>
+          <div class="menu-option" data-action="executeCommand">Ejecutar comando</div>
         </div>
-        <div class="menu-item" data-menu="terminal">
-            <span>Terminal</span>
-            <div class="menu-dropdown" id="menuTerminal">
-                <div class="menu-option" onclick="openTerminal()">Abrir terminal</div>
-                <div class="menu-option" onclick="toggleTerminal()">Mostrar/Ocultar terminal</div>
-            </div>
+      </div>
+      <div class="menu-item" data-menu="terminal">
+        <span>Terminal</span>
+        <div class="menu-dropdown" id="menuTerminal">
+          <div class="menu-option" data-action="openTerminal">Abrir terminal</div>
+          <div class="menu-option" data-action="toggleTerminal">Mostrar/Ocultar terminal</div>
         </div>
+      </div>
     </div>
 
     <!-- MAIN LAYOUT -->
     <div class="app-container" id="appContainer">
-        <!-- SIDEBAR - Solo historial -->
-        <aside class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <button class="collapse-btn" onclick="toggleSidebar()" title="Colapsar sidebar">
-                    <span id="collapseIcon">&#8249;</span>
+      <!-- SIDEBAR - Solo historial -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <button class="collapse-btn" id="collapseSidebarBtn" title="Colapsar sidebar">
+            <span id="collapseIcon">&#8249;</span>
+          </button>
+          <button class="new-chat-btn" id="newChatSidebarBtn">+ Nuevo chat</button>
+        </div>
+        <div class="chat-history" id="chatHistory">
+          <div class="history-item active">
+            <span class="history-icon">&#128172;</span>
+            <span class="history-title">Nueva conversacion</span>
+          </div>
+        </div>
+
+        <!-- Avatar Section -->
+        <div class="avatar-section" id="avatarSection">
+          <div class="avatar-screen" id="avatarScreen">
+            <video id="avatarVideo" autoplay playsinline muted></video>
+            <div class="avatar-placeholder" id="avatarPlaceholder">
+              <span class="avatar-icon">&#128100;</span>
+              <span class="avatar-text">Avatar</span>
+            </div>
+          </div>
+          <div class="avatar-controls">
+            <button class="avatar-control-btn" id="avatarCameraBtn" title="Camara">
+              <span>&#128247;</span>
+            </button>
+            <button class="avatar-control-btn" id="avatarCallBtn" title="Llamada">
+              <span>&#128222;</span>
+            </button>
+            <button
+              class="avatar-control-btn"
+              id="avatarHangBtn"
+              title="Colgar"
+              style="display: none"
+            >
+              <span>&#128222;</span>
+            </button>
+            <button
+              class="avatar-control-btn"
+              id="avatarPauseBtn"
+              title="Pausa"
+              style="display: none"
+            >
+              <span>&#9208;</span>
+            </button>
+          </div>
+          <div class="avatar-mode-controls">
+            <button
+              class="avatar-mode-btn"
+              data-mode="share"
+              data-action="setAvatarMode"
+              data-mode-value="share"
+              title="Compartir pantalla"
+            >
+              &#128187;
+            </button>
+            <button
+              class="avatar-mode-btn"
+              data-mode="fullscreen"
+              data-action="setAvatarMode"
+              data-mode-value="fullscreen"
+              title="Pantalla completa"
+            >
+              &#9974;
+            </button>
+            <button
+              class="avatar-mode-btn"
+              data-mode="pip"
+              data-action="setAvatarMode"
+              data-mode-value="pip"
+              title="Imagen flotante"
+            >
+              &#128470;
+            </button>
+          </div>
+        </div>
+
+        <div class="sidebar-footer">
+          <button class="settings-btn" id="openSettingsBtn" title="Configuracion">&#9881;</button>
+        </div>
+      </aside>
+
+      <!-- MAIN CONTENT -->
+      <main class="main-content">
+        <!-- MESSAGES -->
+        <div class="chat-messages" id="chatMessages">
+          <div class="welcome-screen">
+            <div class="welcome-logo">Q</div>
+            <h1>Qwen-Valencia</h1>
+            <p>Asistente IA multimodal - Qwen & DeepSeek</p>
+          </div>
+        </div>
+
+        <!-- INPUT AREA - Todo aqui -->
+        <div class="input-area">
+          <!-- Streaming indicator -->
+          <div class="streaming-bar" id="streamingBar" style="display: none">
+            <div class="streaming-pulse"></div>
+            <span>Qwen-Valencia esta pensando...</span>
+            <button class="stop-btn" id="stopGenerationBtn">Detener</button>
+          </div>
+
+          <!-- Attached image preview -->
+          <div class="attached-preview" id="attachedPreview" style="display: none">
+            <img id="previewImg" src="" alt="Preview" />
+            <button class="remove-btn" id="removeAttachmentBtn">&#10005;</button>
+          </div>
+
+          <!-- TOOLBAR - Modelo, Modo, Herramientas -->
+          <div class="input-toolbar">
+            <!-- Model Selector -->
+            <div class="model-dropdown" id="modelDropdown">
+              <button class="model-btn" id="modelSelectorBtn">
+                <span class="model-icon" id="modelIcon">&#129302;</span>
+                <span id="modelName">DeepSeek R1</span>
+                <span class="dropdown-arrow">&#9662;</span>
+              </button>
+              <div class="model-menu" id="modelMenu">
+                <!-- Search Bar -->
+                <input
+                  type="text"
+                  class="model-search"
+                  placeholder="Search models"
+                  id="modelSearch"
+                />
+
+                <!-- Toggles -->
+                <div class="model-toggles">
+                  <label class="toggle-item">
+                    <input type="checkbox" id="autoToggle" checked />
+                    <span>Auto</span>
+                  </label>
+                  <label class="toggle-item">
+                    <input type="checkbox" id="maxModeToggle" />
+                    <span>MAX Mode</span>
+                  </label>
+                  <label class="toggle-item">
+                    <input type="checkbox" id="multiModelToggle" />
+                    <span>Use Multiple Models</span>
+                  </label>
+                </div>
+
+                <div class="menu-divider"></div>
+
+                <!-- Model List (Scrollable) - Sin separadores, lista única -->
+                <div class="model-list-scroll" id="modelListScroll">
+                  <!-- Modelos se generan dinámicamente en app.js -->
+                </div>
+
+                <!-- Add More Models -->
+                <div class="model-add-more">
+                  <button class="add-model-btn" id="addModelBtn">+ Add more models</button>
+                </div>
+
+                <!-- Production Sync Controls -->
+                <div class="menu-divider"></div>
+                <div class="model-production-sync">
+                  <button
+                    class="save-production-btn"
+                    id="saveToProductionBtn"
+                    title="Guardar modelos a producción (config/models.json)"
+                  >
+                    💾 Guardar a Producción
+                  </button>
+                  <button
+                    class="load-production-btn"
+                    id="loadFromProductionBtn"
+                    title="Cargar modelos desde producción"
+                  >
+                    📥 Cargar desde Producción
+                  </button>
+                </div>
+              </div>
+
+              <!-- Tooltip -->
+              <div class="model-tooltip" id="modelTooltip">
+                <div class="tooltip-header">
+                  <div class="tooltip-provider"></div>
+                  <div class="tooltip-name"></div>
+                </div>
+                <div class="tooltip-tokens"></div>
+                <div class="tooltip-category"></div>
+                <div class="tooltip-capabilities"></div>
+                <div class="tooltip-description"></div>
+              </div>
+            </div>
+
+            <!-- Mode Toggle -->
+            <div class="mode-toggle">
+              <button class="mode-btn active" data-mode="agent" id="modeAgentBtn">
+                <span>&#9881;</span> Agente
+              </button>
+              <button class="mode-btn" data-mode="plan" id="modePlanBtn">
+                <span>&#128203;</span> Plan
+              </button>
+            </div>
+
+            <div class="toolbar-spacer"></div>
+
+            <!-- API Toggle -->
+            <div class="api-toggle-container">
+              <label class="api-toggle-label">
+                <input type="checkbox" id="apiToggle" checked />
+                <span class="api-toggle-slider"></span>
+                <span class="api-toggle-text" id="apiToggleText">API</span>
+              </label>
+            </div>
+
+            <!-- Tools -->
+            <button class="tool-btn" id="cameraBtn" title="Abrir cámara para IA">&#128247;</button>
+            <button class="tool-btn" id="attachBtn" title="Adjuntar imagen">&#128206;</button>
+          </div>
+
+          <!-- INPUT - Estilo ChatGPT Profesional -->
+          <div class="chat-input-container">
+            <div class="chat-input-wrapper">
+              <textarea
+                id="chatInput"
+                class="chat-input-textarea"
+                placeholder="Message Qwen-Valencia..."
+                rows="1"
+                maxlength="50000"
+                spellcheck="true"
+              ></textarea>
+              <div class="chat-input-actions">
+                <button
+                  class="chat-input-btn chat-mic-btn"
+                  id="dictateBtn"
+                  type="button"
+                  title="Dictar mensaje"
+                  aria-label="Dictar"
+                >
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                  </svg>
                 </button>
-                <button class="new-chat-btn" onclick="newChat()">+ Nuevo chat</button>
+                <button
+                  class="chat-input-btn chat-call-btn"
+                  id="voiceCallBtn"
+                  type="button"
+                  title="Llamada conversacional"
+                  aria-label="Llamada"
+                >
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"
+                    ></path>
+                  </svg>
+                </button>
+                <button
+                  class="chat-input-btn chat-send-btn"
+                  id="sendBtn"
+                  type="button"
+                  title="Enviar mensaje"
+                  aria-label="Enviar"
+                >
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                  </svg>
+                </button>
+              </div>
             </div>
-            <div class="chat-history" id="chatHistory">
-                <div class="history-item active">
-                    <span class="history-icon">&#128172;</span>
-                    <span class="history-title">Nueva conversacion</span>
-                </div>
-            </div>
-            
-            <!-- Avatar Section -->
-            <div class="avatar-section" id="avatarSection">
-                <div class="avatar-screen" id="avatarScreen">
-                    <video id="avatarVideo" autoplay playsinline muted></video>
-                    <div class="avatar-placeholder" id="avatarPlaceholder">
-                        <span class="avatar-icon">&#128100;</span>
-                        <span class="avatar-text">Avatar</span>
-                    </div>
-                </div>
-                <div class="avatar-controls">
-                    <button class="avatar-control-btn" id="avatarCameraBtn" onclick="toggleAvatarCamera()" title="Camara">
-                        <span>&#128247;</span>
-                    </button>
-                    <button class="avatar-control-btn" id="avatarCallBtn" onclick="toggleAvatarCall()" title="Llamada">
-                        <span>&#128222;</span>
-                    </button>
-                    <button class="avatar-control-btn" id="avatarHangBtn" onclick="hangAvatarCall()" title="Colgar" style="display: none;">
-                        <span>&#128222;</span>
-                    </button>
-                    <button class="avatar-control-btn" id="avatarPauseBtn" onclick="toggleAvatarPause()" title="Pausa" style="display: none;">
-                        <span>&#9208;</span>
-                    </button>
-                </div>
-                <div class="avatar-mode-controls">
-                    <button class="avatar-mode-btn" data-mode="share" onclick="setAvatarMode('share')" title="Compartir pantalla">&#128187;</button>
-                    <button class="avatar-mode-btn" data-mode="fullscreen" onclick="setAvatarMode('fullscreen')" title="Pantalla completa">&#9974;</button>
-                    <button class="avatar-mode-btn" data-mode="pip" onclick="setAvatarMode('pip')" title="Imagen flotante">&#128470;</button>
-                </div>
-            </div>
-            
-            <div class="sidebar-footer">
-                <button class="settings-btn" onclick="openSettings()" title="Configuracion">&#9881;</button>
-            </div>
-        </aside>
-
-        <!-- MAIN CONTENT -->
-        <main class="main-content">
-            <!-- MESSAGES -->
-            <div class="chat-messages" id="chatMessages">
-                <div class="welcome-screen">
-                    <div class="welcome-logo">Q</div>
-                    <h1>Qwen-Valencia</h1>
-                    <p>Asistente IA multimodal - Qwen & DeepSeek</p>
-                </div>
-            </div>
-
-            <!-- INPUT AREA - Todo aqui -->
-            <div class="input-area">
-                <!-- Streaming indicator -->
-                <div class="streaming-bar" id="streamingBar" style="display: none;">
-                    <div class="streaming-pulse"></div>
-                    <span>Qwen-Valencia esta pensando...</span>
-                    <button class="stop-btn" onclick="stopGeneration()">Detener</button>
-                </div>
-
-                <!-- Attached image preview -->
-                <div class="attached-preview" id="attachedPreview" style="display: none;">
-                    <img id="previewImg" src="" alt="Preview">
-                    <button class="remove-btn" onclick="removeAttachment()">&#10005;</button>
-                </div>
-
-                <!-- TOOLBAR - Modelo, Modo, Herramientas -->
-                <div class="input-toolbar">
-                    <!-- Model Selector -->
-                    <div class="model-dropdown" id="modelDropdown">
-                        <button class="model-btn" onclick="toggleModelMenu()">
-                            <span class="model-icon" id="modelIcon">&#129302;</span>
-                            <span id="modelName">DeepSeek R1</span>
-                            <span class="dropdown-arrow">&#9662;</span>
-                        </button>
-                        <div class="model-menu" id="modelMenu">
-                            <!-- Search Bar -->
-                            <input type="text" class="model-search" placeholder="Search models" id="modelSearch">
-                            
-                            <!-- Toggles -->
-                            <div class="model-toggles">
-                                <label class="toggle-item">
-                                    <input type="checkbox" id="autoToggle" checked onchange="toggleAutoMode(this.checked)">
-                                    <span>Auto</span>
-                                </label>
-                                <label class="toggle-item">
-                                    <input type="checkbox" id="maxModeToggle" onchange="toggleMaxMode(this.checked)">
-                                    <span>MAX Mode</span>
-                                </label>
-                                <label class="toggle-item">
-                                    <input type="checkbox" id="multiModelToggle" onchange="toggleMultiModel(this.checked)">
-                                    <span>Use Multiple Models</span>
-                                </label>
-                            </div>
-                            
-                            <div class="menu-divider"></div>
-                            
-                            <!-- Model List (Scrollable) - Sin separadores, lista única -->
-                            <div class="model-list-scroll" id="modelListScroll">
-                                <!-- Modelos se generan dinámicamente en app.js -->
-                            </div>
-                            
-                            <!-- Add More Models -->
-                            <div class="model-add-more">
-                                <button class="add-model-btn" onclick="showAddModelModal()">+ Add more models</button>
-                            </div>
-                        </div>
-                        
-                        <!-- Tooltip -->
-                        <div class="model-tooltip" id="modelTooltip">
-                            <div class="tooltip-header">
-                                <div class="tooltip-provider"></div>
-                                <div class="tooltip-name"></div>
-                            </div>
-                            <div class="tooltip-tokens"></div>
-                            <div class="tooltip-category"></div>
-                            <div class="tooltip-capabilities"></div>
-                            <div class="tooltip-description"></div>
-                        </div>
-                    </div>
-
-                    <!-- Mode Toggle -->
-                    <div class="mode-toggle">
-                        <button class="mode-btn active" data-mode="agent" onclick="setMode('agent')">
-                            <span>&#9881;</span> Agente
-                        </button>
-                        <button class="mode-btn" data-mode="plan" onclick="setMode('plan')">
-                            <span>&#128203;</span> Plan
-                        </button>
-                    </div>
-
-                    <div class="toolbar-spacer"></div>
-
-                    <!-- API Toggle -->
-                    <div class="api-toggle-container">
-                        <label class="api-toggle-label">
-                            <input type="checkbox" id="apiToggle" onchange="toggleAPI()" checked>
-                            <span class="api-toggle-slider"></span>
-                            <span class="api-toggle-text" id="apiToggleText">API</span>
-                        </label>
-                    </div>
-
-                    <!-- Tools -->
-                    <button class="tool-btn" id="cameraBtn" onclick="openCameraForIA()" title="Abrir cámara para IA">&#128247;</button>
-                    <button class="tool-btn" id="attachBtn" onclick="attachImage()" title="Adjuntar imagen">&#128206;</button>
-                </div>
-
-                <!-- INPUT - Estilo ChatGPT Profesional -->
-                <div class="chat-input-container">
-                    <div class="chat-input-wrapper">
-                        <textarea 
-                            id="chatInput" 
-                            class="chat-input-textarea"
-                            placeholder="Message Qwen-Valencia..." 
-                            rows="1"
-                            maxlength="50000"
-                            spellcheck="true"></textarea>
-                        <div class="chat-input-actions">
-                            <button 
-                                class="chat-input-btn chat-mic-btn" 
-                                id="dictateBtn" 
-                                type="button"
-                                title="Dictar mensaje"
-                                aria-label="Dictar">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                                    <line x1="12" y1="19" x2="12" y2="23"></line>
-                                    <line x1="8" y1="23" x2="16" y2="23"></line>
-                                </svg>
-                            </button>
-                            <button 
-                                class="chat-input-btn chat-call-btn" 
-                                id="voiceCallBtn" 
-                                type="button"
-                                title="Llamada conversacional"
-                                aria-label="Llamada">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
-                                </svg>
-                            </button>
-                            <button 
-                                class="chat-input-btn chat-send-btn" 
-                                id="sendBtn" 
-                                type="button"
-                                title="Enviar mensaje"
-                                aria-label="Enviar">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <line x1="22" y1="2" x2="11" y2="13"></line>
-                                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </main>
-  </div>
+          </div>
+        </div>
+      </main>
+    </div>
 
     <!-- CAMERA MODAL -->
     <div class="modal" id="cameraModal">
-        <div class="modal-content camera-content">
-            <div class="modal-header">
-                <h3>Camara</h3>
-                <button class="modal-close" onclick="closeCamera()">&#10005;</button>
-            </div>
-            <div class="camera-view">
-                <video id="cameraVideo" autoplay muted playsinline></video>
-                <canvas id="cameraCanvas" style="display: none;"></canvas>
-            </div>
-            <div class="camera-actions">
-                <button class="capture-btn" onclick="capturePhoto()">Capturar</button>
-            </div>
+      <div class="modal-content camera-content">
+        <div class="modal-header">
+          <h3>Camara</h3>
+          <button class="modal-close" id="closeCameraBtn">&#10005;</button>
+        </div>
+        <div class="camera-view">
+          <video id="cameraVideo" autoplay muted playsinline></video>
+          <canvas id="cameraCanvas" style="display: none"></canvas>
+        </div>
+        <div class="camera-actions">
+          <button class="capture-btn" id="capturePhotoBtn">Capturar</button>
+        </div>
       </div>
     </div>
 
     <!-- SETTINGS MODAL -->
     <div class="modal" id="settingsModal">
-        <div class="modal-content settings-content">
-            <div class="modal-header">
-                <h3>Configuracion</h3>
-                <button class="modal-close" onclick="closeSettings()">&#10005;</button>
-            </div>
-            <div class="settings-body">
-                <nav class="settings-nav">
-                    <button class="nav-item active" data-panel="general" onclick="showPanel('general')">General</button>
-                    <button class="nav-item" data-panel="mcp" onclick="showPanel('mcp')">MCP Server</button>
-                    <button class="nav-item" data-panel="connectors" onclick="showPanel('connectors')">Conectores</button>
-                    <button class="nav-item" data-panel="servers" onclick="showPanel('servers')">Servidores</button>
-                </nav>
-                <div class="settings-panels">
-                    <div class="panel active" id="panel-general">
-                        <div class="setting-group">
-                            <label for="temperature">Temperatura</label>
-                            <div class="range-group">
-                                <input type="range" id="temperature" name="temperature" min="0" max="2" step="0.1" value="0.7" oninput="updateTempValue(this)" aria-label="Temperatura del modelo">
-                                <span id="tempValue">0.7</span>
-                            </div>
-                        </div>
-                        <div class="setting-group">
-                            <label for="maxTokens">Max Tokens</label>
-                            <input type="number" id="maxTokens" name="maxTokens" value="4096" min="256" max="32768" aria-label="Máximo de tokens">
-                        </div>
-                    </div>
-                    <div class="panel" id="panel-ollama">
-                        <div class="setting-group">
-                            <label for="ollamaUrl">URL Base</label>
-                            <input type="text" id="ollamaUrl" name="ollamaUrl" value="http://localhost:11434" aria-label="URL base de Ollama">
-                        </div>
-                    </div>
-                    <div class="panel" id="panel-mcp">
-                        <div class="setting-group">
-                            <label>MCP Universal Server</label>
-                            <div class="mcp-controls">
-                                <span class="mcp-status" id="mcpStatus">🟢 Conectado (Auto-iniciado)</span>
-                                <p class="info-text" style="margin-top: 10px; font-size: 12px; color: var(--text-muted);">
-                                    El servidor MCP Universal se inicia automáticamente al abrir la aplicación.
-                                    No requiere configuración manual.
-                                </p>
-                            </div>
-                        </div>
-                        <div class="setting-group">
-                            <label>MCP Configuration</label>
-                            <div class="info-text">
-                                <p>Las API keys se cargan automáticamente desde <code>VARIABLESFULL</code> en el repositorio.</p>
-                                <p>El servidor MCP Universal permite a todos los modelos (Qwen, DeepSeek) ejecutar código, leer/escribir archivos y ejecutar comandos del sistema.</p>
-                            </div>
-                        </div>
-                        <div class="setting-group">
-                            <label>MCP Tools Disponibles</label>
-                            <ul class="mcp-tools-list">
-                                <li>✅ execute_code (Python, JavaScript, PowerShell)</li>
-                                <li>✅ execute_command (Comandos del sistema)</li>
-                                <li>✅ list_files (Listar directorios)</li>
-                                <li>✅ read_file (Leer archivos)</li>
-                                <li>✅ write_file (Escribir archivos)</li>
-                                <li>✅ github_operations (Operaciones Git/GitHub)</li>
-                                <li>✅ WebSocket (Comunicación en tiempo real)</li>
-                            </ul>
-                        </div>
-                    </div>
-                    <div class="panel" id="panel-connectors">
-                        <div class="setting-group">
-                            <label>Conectores Disponibles</label>
-                            <div class="connectors-list">
-                                <div class="connector-item">
-                                    <span class="connector-name">Ollama</span>
-                                    <span class="connector-status" id="ollamaStatus">Verificando...</span>
-                                </div>
-                                <div class="connector-item">
-                                    <span class="connector-name">Groq</span>
-                                    <span class="connector-status" id="groqStatus">Verificando...</span>
-                                </div>
-                            </div>
-                            <div class="info-text">
-                                <p><strong>Nota:</strong> Las API keys se gestionan desde <code>VARIABLESFULL</code>. No se pueden modificar desde esta interfaz.</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="panel" id="panel-servers">
-                        <div class="setting-group">
-                            <label>Añadir Servidor MCP</label>
-                            <input type="text" id="newServerName" placeholder="Nombre del servidor">
-                            <input type="text" id="newServerCommand" placeholder="Comando (ej: node server.js)">
-                            <button class="btn-primary" onclick="addMCPServer()">Añadir Servidor</button>
-                        </div>
-                        <div class="setting-group">
-                            <label>Servidores MCP Configurados</label>
-                            <div id="mcpServersList" class="servers-list">
-                                <div class="server-item">
-                                    <span class="server-name">mcp-universal</span>
-                                    <span class="server-status">Activo</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn-cancel" onclick="closeSettings()">Cancelar</button>
-                <button class="btn-save" onclick="saveSettings()">Guardar</button>
-            </div>
+      <div class="modal-content settings-content">
+        <div class="modal-header">
+          <h3>Configuracion</h3>
+          <button class="modal-close" id="closeSettingsBtn">&#10005;</button>
         </div>
+        <div class="settings-body">
+          <nav class="settings-nav">
+            <button
+              class="nav-item active"
+              data-panel="general"
+              data-action="showPanel"
+              data-panel-value="general"
+            >
+              General
+            </button>
+            <button
+              class="nav-item"
+              data-panel="mcp"
+              data-action="showPanel"
+              data-panel-value="mcp"
+            >
+              MCP Server
+            </button>
+            <button
+              class="nav-item"
+              data-panel="connectors"
+              data-action="showPanel"
+              data-panel-value="connectors"
+            >
+              Conectores
+            </button>
+            <button
+              class="nav-item"
+              data-panel="servers"
+              data-action="showPanel"
+              data-panel-value="servers"
+            >
+              Servidores
+            </button>
+          </nav>
+          <div class="settings-panels">
+            <div class="panel active" id="panel-general">
+              <div class="setting-group">
+                <label for="temperature">Temperatura</label>
+                <div class="range-group">
+                  <input
+                    type="range"
+                    id="temperature"
+                    name="temperature"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    value="0.7"
+                    oninput="updateTempValue(this)"
+                    aria-label="Temperatura del modelo"
+                  />
+                  <span id="tempValue">0.7</span>
+                </div>
+              </div>
+              <div class="setting-group">
+                <label for="maxTokens">Max Tokens</label>
+                <input
+                  type="number"
+                  id="maxTokens"
+                  name="maxTokens"
+                  value="4096"
+                  min="256"
+                  max="32768"
+                  aria-label="Máximo de tokens"
+                />
+              </div>
+            </div>
+            <div class="panel" id="panel-ollama">
+              <div class="setting-group">
+                <label for="ollamaUrl">URL Base</label>
+                <input
+                  type="text"
+                  id="ollamaUrl"
+                  name="ollamaUrl"
+                  value="http://localhost:11434"
+                  aria-label="URL base de Ollama"
+                />
+              </div>
+            </div>
+            <div class="panel" id="panel-mcp">
+              <div class="setting-group">
+                <label>MCP Universal Server</label>
+                <div class="mcp-controls">
+                  <span class="mcp-status" id="mcpStatus">🟢 Conectado (Auto-iniciado)</span>
+                  <p
+                    class="info-text"
+                    style="margin-top: 10px; font-size: 12px; color: var(--text-muted)"
+                  >
+                    El servidor MCP Universal se inicia automáticamente al abrir la aplicación. No
+                    requiere configuración manual.
+                  </p>
+                </div>
+              </div>
+              <div class="setting-group">
+                <label>MCP Configuration</label>
+                <div class="info-text">
+                  <p>
+                    Las API keys se cargan automáticamente desde <code>VARIABLESFULL</code> en el
+                    repositorio.
+                  </p>
+                  <p>
+                    El servidor MCP Universal permite a todos los modelos (Qwen, DeepSeek) ejecutar
+                    código, leer/escribir archivos y ejecutar comandos del sistema.
+                  </p>
+                </div>
+              </div>
+              <div class="setting-group">
+                <label>MCP Tools Disponibles</label>
+                <ul class="mcp-tools-list">
+                  <li>✅ execute_code (Python, JavaScript, PowerShell)</li>
+                  <li>✅ execute_command (Comandos del sistema)</li>
+                  <li>✅ list_files (Listar directorios)</li>
+                  <li>✅ read_file (Leer archivos)</li>
+                  <li>✅ write_file (Escribir archivos)</li>
+                  <li>✅ github_operations (Operaciones Git/GitHub)</li>
+                  <li>✅ WebSocket (Comunicación en tiempo real)</li>
+                </ul>
+              </div>
+            </div>
+            <div class="panel" id="panel-connectors">
+              <div class="setting-group">
+                <label>Conectores Disponibles</label>
+                <div class="connectors-list">
+                  <div class="connector-item">
+                    <span class="connector-name">Ollama</span>
+                    <span class="connector-status" id="ollamaStatus">Verificando...</span>
+                  </div>
+                  <div class="connector-item">
+                    <span class="connector-name">Groq</span>
+                    <span class="connector-status" id="groqStatus">Verificando...</span>
+                  </div>
+                </div>
+                <div class="info-text">
+                  <p>
+                    <strong>Nota:</strong> Las API keys se gestionan desde
+                    <code>VARIABLESFULL</code>. No se pueden modificar desde esta interfaz.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div class="panel" id="panel-servers">
+              <div class="setting-group">
+                <label>Añadir Servidor MCP</label>
+                <input type="text" id="newServerName" placeholder="Nombre del servidor" />
+                <input
+                  type="text"
+                  id="newServerCommand"
+                  placeholder="Comando (ej: node server.js)"
+                />
+                <button class="btn-primary" id="addMCPServerBtn">Añadir Servidor</button>
+              </div>
+              <div class="setting-group">
+                <label>Servidores MCP Configurados</label>
+                <div id="mcpServersList" class="servers-list">
+                  <div class="server-item">
+                    <span class="server-name">mcp-universal</span>
+                    <span class="server-status">Activo</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-cancel" id="cancelSettingsBtn">Cancelar</button>
+          <button class="btn-save" id="saveSettingsBtn">Guardar</button>
+        </div>
+      </div>
     </div>
 
     <!-- Hidden file input -->
-    <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="handleFileSelect(event)">
+    <input
+      type="file"
+      id="fileInput"
+      accept="image/*"
+      style="display: none"
+      onchange="handleFileSelect(event)"
+    />
 
     <!-- Context Menu -->
     <div class="context-menu" id="contextMenu">
-        <div class="context-item" onclick="contextCopy()">Copiar</div>
-        <div class="context-item" onclick="contextPaste()">Pegar</div>
-        <div class="context-item" onclick="contextCut()">Cortar</div>
-        <div class="context-divider"></div>
-        <div class="context-item" onclick="contextSelectAll()">Seleccionar todo</div>
-  </div>
+      <div class="context-item" data-action="contextCopy">Copiar</div>
+      <div class="context-item" data-action="contextPaste">Pegar</div>
+      <div class="context-item" data-action="contextCut">Cortar</div>
+      <div class="context-divider"></div>
+      <div class="context-item" data-action="contextSelectAll">Seleccionar todo</div>
+    </div>
 
     <!-- Scripts -->
     <script src="utils/json-helpers.js"></script>
@@ -445,8 +609,6 @@
     <script src="utils/dom-updater.js"></script>
     <!-- Resource Cleanup - Gestión centralizada de cleanup -->
     <script src="utils/resource-cleanup.js"></script>
-    <!-- Event Listeners - Debe cargarse antes de app.js para reemplazar onclick -->
-    <script src="utils/event-listeners.js"></script>
     <!-- Enterprise-Level Modules -->
     <script src="utils/logger.js"></script>
     <script src="core/state-manager.js"></script>
@@ -459,21 +621,8 @@
     <!-- HeyGen Avatar deshabilitado temporalmente -->
     <!-- <script src="components/heygen-avatar.js"></script> -->
     <script src="components/app.js"></script>
-    <script>
-        // Verificación de que las funciones críticas estén disponibles
-        window.addEventListener('load', () => {
-            const logger = window.logger || { info: console.log };
-            logger.info('Script cargado. Funciones disponibles', {
-                toggleModelMenu: typeof window.toggleModelMenu,
-                handleKeydown: typeof window.handleKeydown,
-                autoResize: typeof window.autoResize,
-                sendMessage: typeof window.sendMessage,
-                toggleTheme: typeof window.toggleTheme,
-                stateManager: typeof window.getStateManager,
-                eventManager: typeof window.getEventManager,
-                apiService: typeof window.getAPIService
-            });
-        });
-    </script>
-</body>
+    <!-- Event Listeners - Debe cargarse DESPUÉS de app.js para que las funciones estén disponibles -->
+    <script src="utils/event-listeners.js"></script>
+    <!-- Script inline eliminado - violaba CSP. Verificación movida a app.js -->
+  </body>
 </html>
