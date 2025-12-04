@@ -1556,21 +1556,24 @@ let sharedState = {
 /**
  * Handler para obtener estado compartido desde el backend
  */
-ipcMain.handle('get-shared-state', async event => {
-  try {
-    return {
-      success: true,
-      state: { ...sharedState },
-      timestamp: Date.now()
-    };
-  } catch (error) {
-    logger.error('Error obteniendo estado compartido', { error: error.message });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-});
+ipcMain.handle(
+  'get-shared-state',
+  validateIPC('get-shared-state', async event => {
+    try {
+      return {
+        success: true,
+        state: { ...sharedState },
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      logger.error('Error obteniendo estado compartido', { error: error.message });
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  })
+);
 
 /**
  * Handler para actualizar estado compartido desde el frontend
