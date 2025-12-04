@@ -68,12 +68,19 @@ function sanitizeHTMLWithTags(html) {
   const scripts = temp.querySelectorAll('script, style, iframe, object, embed, form');
   scripts.forEach(el => el.remove());
 
-  // Remover atributos de eventos (onclick, onerror, etc.)
+  // Remover atributos de eventos (onclick, onerror, etc.) y valores peligrosos
   const allElements = temp.querySelectorAll('*');
   allElements.forEach(el => {
-    // Remover todos los atributos que empiezan con 'on'
+    // Remover todos los atributos que empiezan con 'on' o tienen valores peligrosos
     Array.from(el.attributes).forEach(attr => {
-      if (attr.name.startsWith('on') || attr.name === 'javascript:' || attr.name.startsWith('data:')) {
+      // FIX: Verificar nombre del atributo (eventos) y VALOR del atributo (javascript:, data:, etc.)
+      const attrName = attr.name.toLowerCase();
+      const attrValue = (attr.value || '').toLowerCase().trim();
+      
+      if (attrName.startsWith('on') || 
+          attrValue.startsWith('javascript:') || 
+          attrValue.startsWith('data:text/html') ||
+          attrValue.startsWith('vbscript:')) {
         el.removeAttribute(attr.name);
       }
     });

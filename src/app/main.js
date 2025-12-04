@@ -1887,34 +1887,56 @@ async function loadLazyModule(moduleName, forceReload = false) {
         if (mcpServer) {
           try {
             await mcpServer.stop();
+            mcpServer = null;
+            lazyModules.mcpServer = null;
           } catch (e) {
-            logger.warn('Error deteniendo mcpServer', { error: e.message });
+            logger.error('Error crítico deteniendo mcpServer, abortando recarga', { 
+              error: e.message,
+              stack: e.stack
+            });
+            // FIX: Si falla al detener, NO limpiar referencias para evitar instancias duplicadas
+            // Lanzar error para que el caller sepa que la recarga falló
+            throw new Error(`No se puede recargar mcpServer: error al detener servidor existente: ${e.message}`);
           }
-          mcpServer = null;
+        } else {
+          lazyModules.mcpServer = null;
         }
-        lazyModules.mcpServer = null;
         break;
       case 'ollamaMcpServer':
         if (ollamaMcpServer) {
           try {
             await ollamaMcpServer.stop();
+            ollamaMcpServer = null;
+            lazyModules.ollamaMcpServer = null;
           } catch (e) {
-            logger.warn('Error deteniendo ollamaMcpServer', { error: e.message });
+            logger.error('Error crítico deteniendo ollamaMcpServer, abortando recarga', { 
+              error: e.message,
+              stack: e.stack
+            });
+            // FIX: Si falla al detener, NO limpiar referencias para evitar instancias duplicadas
+            throw new Error(`No se puede recargar ollamaMcpServer: error al detener servidor existente: ${e.message}`);
           }
-          ollamaMcpServer = null;
+        } else {
+          lazyModules.ollamaMcpServer = null;
         }
-        lazyModules.ollamaMcpServer = null;
         break;
       case 'groqApiServer':
         if (groqApiServer) {
           try {
             await groqApiServer.stop();
+            groqApiServer = null;
+            lazyModules.groqApiServer = null;
           } catch (e) {
-            logger.warn('Error deteniendo groqApiServer', { error: e.message });
+            logger.error('Error crítico deteniendo groqApiServer, abortando recarga', { 
+              error: e.message,
+              stack: e.stack
+            });
+            // FIX: Si falla al detener, NO limpiar referencias para evitar instancias duplicadas
+            throw new Error(`No se puede recargar groqApiServer: error al detener servidor existente: ${e.message}`);
           }
-          groqApiServer = null;
+        } else {
+          lazyModules.groqApiServer = null;
         }
-        lazyModules.groqApiServer = null;
         break;
       case 'conversationService':
         conversationService = null;
