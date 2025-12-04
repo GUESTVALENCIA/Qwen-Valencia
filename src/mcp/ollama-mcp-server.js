@@ -1,6 +1,6 @@
 /**
  * OLLAMA MCP SERVER - Servidor Dedicado Optimizado
- * 
+ *
  * Características:
  * - Streaming real con Server-Sent Events (SSE)
  * - Conexiones HTTP keep-alive persistentes
@@ -27,29 +27,30 @@ const SecurityMiddleware = require('../middleware/security');
 const CorrelationMiddleware = require('../middleware/correlation');
 const ValidatorMiddleware = require('../middleware/validator');
 const { setupSwagger } = require('../utils/swagger-setup');
+const { StreamManager } = require('../utils/stream-manager');
 
 class OllamaMCPServer extends EventEmitter {
   constructor() {
     super();
     this.app = express();
-    
+
     // Cargar configuración centralizada
     const serviceConfig = getServiceConfig('ollama-mcp-server');
     this.port = serviceConfig.port || 6002;
-    
+
     // Logger y métricas
     this.logger = LoggerFactory.create('ollama-mcp-server');
     this.metrics = MetricsFactory.create('ollama_api');
-    
+
     // Configuración de Ollama
     this.ollamaUrl = serviceConfig.baseUrl || 'http://localhost:11434';
-    
+
     // Cache de modelos disponibles
     this.availableModels = [];
     this.modelsCacheTime = 0;
     this.modelsCacheTTL = serviceConfig.modelsCacheTTL || 60000;
     this.ollamaTimeout = serviceConfig.timeout || 300000;
-    
+
     // Pool de conexiones HTTP persistentes
     this.httpAgent = new http.Agent({
       keepAlive: true,
@@ -58,7 +59,7 @@ class OllamaMCPServer extends EventEmitter {
       maxFreeSockets: 5,
       timeout: 60000
     });
-    
+
     // Cache inteligente con LRU
     const LRUCache = require('../utils/lru-cache');
     this.cache = new LRUCache({
@@ -70,21 +71,27 @@ class OllamaMCPServer extends EventEmitter {
     });
     this.maxCacheSize = serviceConfig.cache?.maxSize || 200;
     this.cacheTTL = serviceConfig.cache?.ttl || 1800000;
-    
-    // Streams activos
-    this.activeStreams = new Map();
-    
+
+    // Stream Manager - Abstracción unificada para SSE
+    this.streamManager = new StreamManager({
+      maxStreamTimeout: this.ollamaTimeout,
+      cleanupInterval: 60000 // 1 minuto
+    });
+
+    // Mantener activeStreams para compatibilidad (deprecated, usar streamManager)
+    this.activeStreams = this.streamManager.activeStreams;
+
     // Queue de requests con prioridades
     this.requestQueue = [];
     this.maxConcurrentRequests = serviceConfig.maxConcurrentRequests || 2;
     this.currentRequests = 0;
-    
+
     // Servidor HTTP
     this.server = null;
-    
+
     // Intervals para cleanup (guardar referencias para poder limpiarlos)
     this.cleanupIntervals = [];
-    
+
     // Estadísticas
     this.stats = {
       totalRequests: 0,
@@ -95,24 +102,24 @@ class OllamaMCPServer extends EventEmitter {
       avgResponseTime: 0,
       responseTimes: []
     };
-    
+
     // Optimización de recursos
     this.setupResourceLimits();
-    
+
     this.setupMiddleware();
     this.setupRoutes();
     this.setupSwagger();
-    
+
     // Limpieza periódica de cache (guardar referencia)
     const cacheCleanupInterval = setInterval(() => this.cleanCache(), 600000); // Cada 10 minutos
     this.cleanupIntervals.push(cacheCleanupInterval);
-    
+
     this.logger.info('Ollama MCP Server inicializado', {
       port: this.port,
       ollamaUrl: this.ollamaUrl
     });
   }
-  
+
   /**
    * Configurar Swagger UI para documentación OpenAPI
    */
@@ -124,7 +131,7 @@ class OllamaMCPServer extends EventEmitter {
       this.logger.warn('No se pudo configurar Swagger UI', { error: error.message });
     }
   }
-  
+
   /**
    * Configurar límites de recursos para evitar ralentización del sistema
    */
@@ -144,29 +151,29 @@ class OllamaMCPServer extends EventEmitter {
           // Ignorar si no hay permisos
         }
       }
-      
+
       // Limitar memoria (si Node.js lo permite)
       if (process.env.NODE_OPTIONS) {
         process.env.NODE_OPTIONS += ' --max-old-space-size=2048';
       }
-      
+
       this.logger.info('Límites de recursos configurados');
     } catch (error) {
       this.logger.warn('No se pudieron configurar límites de recursos', { error: error.message });
     }
   }
-  
+
   setupMiddleware() {
     const serviceConfig = getServiceConfig('ollama-mcp-server');
-    
+
     // Body parser
     this.app.use(express.json({ limit: '50mb' }));
     this.app.use(express.text({ limit: '50mb' }));
-    
+
     // Correlation IDs
     const correlationMiddleware = CorrelationMiddleware.create();
     this.app.use(correlationMiddleware.middleware());
-    
+
     // Security middleware
     const securityMiddleware = SecurityMiddleware.create({
       enableHelmet: serviceConfig.security?.enableHelmet !== false,
@@ -177,34 +184,34 @@ class OllamaMCPServer extends EventEmitter {
       trustProxy: serviceConfig.security?.trustProxy || false
     });
     this.app.use(securityMiddleware.middleware());
-    
+
     // Rate limiting avanzado (más permisivo para Ollama local)
     this.rateLimiter = RateLimiterFactory.standard({
       windowMs: serviceConfig.rateLimit?.windowMs || 60000,
       maxRequests: serviceConfig.rateLimit?.maxRequests || 200,
-      keyGenerator: (req) => {
+      keyGenerator: req => {
         return req.ip || 'unknown';
       }
     });
     this.app.use(this.rateLimiter.middleware());
-    
+
     // Validator middleware
     this.validator = ValidatorMiddleware.create();
-    
+
     // Logging de requests con correlation ID
     this.app.use((req, res, next) => {
       const correlationId = req.correlationId || 'unknown';
       const start = Date.now();
-      
+
       res.on('finish', () => {
         const duration = Date.now() - start;
         this.stats.responseTimes.push(duration);
         if (this.stats.responseTimes.length > 100) {
           this.stats.responseTimes.shift();
         }
-        this.stats.avgResponseTime = 
+        this.stats.avgResponseTime =
           this.stats.responseTimes.reduce((a, b) => a + b, 0) / this.stats.responseTimes.length;
-        
+
         this.logger.info('Request procesado', {
           method: req.method,
           path: req.path,
@@ -212,28 +219,28 @@ class OllamaMCPServer extends EventEmitter {
           duration: `${duration}ms`,
           correlationId
         });
-        
+
         // Métricas
         this.metrics.recordRequest(req.method, req.path, res.statusCode, duration);
       });
-      
+
       next();
     });
   }
-  
+
   setupRoutes() {
     // Health check (liveness)
     this.app.get('/ollama/health', (req, res) => {
       const memUsage = process.memoryUsage();
       const cpuUsage = process.cpuUsage();
-      
+
       res.json({
         status: 'healthy',
         service: 'ollama-mcp',
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
         ollamaUrl: this.ollamaUrl,
-        activeStreams: this.activeStreams.size,
+        activeStreams: this.streamManager.activeStreams.size,
         cacheSize: this.cache.size(),
         currentRequests: this.currentRequests,
         stats: this.stats,
@@ -253,7 +260,7 @@ class OllamaMCPServer extends EventEmitter {
         }
       });
     });
-    
+
     // Health check (readiness)
     this.app.get('/ollama/health/ready', async (req, res) => {
       // Verificar conexión con Ollama
@@ -264,7 +271,7 @@ class OllamaMCPServer extends EventEmitter {
       } catch (error) {
         ollamaAvailable = false;
       }
-      
+
       const isReady = ollamaAvailable && this.server && this.server.listening;
       res.status(isReady ? 200 : 503).json({
         ready: isReady,
@@ -275,7 +282,7 @@ class OllamaMCPServer extends EventEmitter {
         }
       });
     });
-    
+
     // Health check (liveness)
     this.app.get('/ollama/health/live', (req, res) => {
       res.json({
@@ -284,7 +291,7 @@ class OllamaMCPServer extends EventEmitter {
         pid: process.pid
       });
     });
-    
+
     // Verificar conexión con Ollama y listar modelos
     this.app.get('/ollama/models', async (req, res) => {
       try {
@@ -306,191 +313,162 @@ class OllamaMCPServer extends EventEmitter {
         });
       }
     });
-    
+
     // Chat con streaming (SSE) - con validación
-    this.app.post('/ollama/stream/chat',
-      this.validator.validate('/ollama/stream/chat', ValidatorMiddleware.commonSchemas.ollamaChatRequest),
+    this.app.post(
+      '/ollama/stream/chat',
+      this.validator.validate(
+        '/ollama/stream/chat',
+        ValidatorMiddleware.commonSchemas.ollamaChatRequest
+      ),
       async (req, res) => {
-      // Verificar límite de requests concurrentes
-      if (this.currentRequests >= this.maxConcurrentRequests) {
-        return res.status(429).json({ 
-          error: 'Demasiadas requests concurrentes. Intenta de nuevo en un momento.' 
-        });
-      }
-      
-      this.currentRequests++;
-      const requestId = req.body.requestId || `req_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-      const { model, messages, images, options = {} } = req.body;
-      
-      if (!model || !messages) {
-        this.currentRequests--;
-        const { APIError } = require('../utils/api-error');
-        const error = APIError.invalidRequest('model y messages son requeridos', {
-          missing: !model ? ['model'] : ['messages']
-        });
-        return res.status(error.statusCode).json(error.toJSON());
-      }
-      
-      this.stats.totalRequests++;
-      this.stats.streamingRequests++;
-      
-      // Configurar SSE
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-      res.setHeader('X-Accel-Buffering', 'no');
-      
-      // Enviar ID de request
-      res.write(`id: ${requestId}\n`);
-      res.write(`data: ${JSON.stringify({ type: 'start', requestId })}\n\n`);
-      
-      this.activeStreams.set(requestId, { res, startTime: Date.now() });
-      
-      try {
-        await this.streamChat({
-          model,
-          messages: this.optimizeMessages(messages),
-          images,
-          options,
-          requestId,
-          onToken: (token, fullContent) => {
-            if (this.activeStreams.has(requestId)) {
-              res.write(`data: ${JSON.stringify({ 
-                type: 'token', 
-                token, 
-                fullContent,
-                requestId 
-              })}\n\n`);
-            }
-          },
-          onComplete: (fullContent) => {
-            if (this.activeStreams.has(requestId)) {
-              res.write(`data: ${JSON.stringify({ 
-                type: 'complete', 
-                content: fullContent,
-                requestId 
-              })}\n\n`);
-              res.end();
-              this.activeStreams.delete(requestId);
-            }
-            this.currentRequests--;
-          },
-          onError: (error) => {
-            if (this.activeStreams.has(requestId)) {
-              res.write(`data: ${JSON.stringify({ 
-                type: 'error', 
-                error: error.message || error,
-                requestId 
-              })}\n\n`);
-              res.end();
-              this.activeStreams.delete(requestId);
-            }
-            this.stats.errors++;
-            this.currentRequests--;
-          }
-        });
-      } catch (error) {
-        if (this.activeStreams.has(requestId)) {
-          res.write(`data: ${JSON.stringify({ 
-            type: 'error', 
-            error: error.message || 'Error desconocido',
-            requestId 
-          })}\n\n`);
-          res.end();
-          this.activeStreams.delete(requestId);
-        }
-        this.stats.errors++;
-        this.currentRequests--;
-      }
-    });
-    
-    // Chat sin streaming (más rápido para respuestas cortas) - con validación
-    this.app.post('/ollama/chat',
-      this.validator.validate('/ollama/chat', ValidatorMiddleware.commonSchemas.ollamaChatRequest),
-      async (req, res) => {
-      // Verificar límite de requests concurrentes
-      if (this.currentRequests >= this.maxConcurrentRequests) {
-        return res.status(429).json({ 
-          error: 'Demasiadas requests concurrentes. Intenta de nuevo en un momento.' 
-        });
-      }
-      
-      this.currentRequests++;
-      const { model, messages, images, options = {} } = req.body;
-      
-      if (!model || !messages) {
-        this.currentRequests--;
-        const { APIError } = require('../utils/api-error');
-        const error = APIError.invalidRequest('model y messages son requeridos', {
-          missing: !model ? ['model'] : ['messages']
-        });
-        return res.status(error.statusCode).json(error.toJSON());
-      }
-      
-      this.stats.totalRequests++;
-      
-      try {
-        // Verificar cache primero
-        const cacheKey = this.generateCacheKey(messages, model);
-        const cached = this.cache.get(cacheKey);
-        if (cached) {
-          // LRUCache maneja TTL automáticamente, si existe no está expirado
-          this.stats.cacheHits++;
-          this.currentRequests--;
-          return res.json({
-            success: true,
-            content: cached.response,
-            cached: true
+        // Verificar límite de requests concurrentes
+        if (this.currentRequests >= this.maxConcurrentRequests) {
+          return res.status(429).json({
+            error: 'Demasiadas requests concurrentes. Intenta de nuevo en un momento.'
           });
         }
-        
-        this.stats.cacheMisses++;
-        
-        const result = await this.optimizedChat({
+
+        this.currentRequests++;
+        const requestId =
+          req.body.requestId || `req_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+        const { model, messages, images, options = {} } = req.body;
+
+        if (!model || !messages) {
+          this.currentRequests--;
+          const { APIError } = require('../utils/api-error');
+          const error = APIError.invalidRequest('model y messages son requeridos', {
+            missing: !model ? ['model'] : ['messages']
+          });
+          return res.status(error.statusCode).json(error.toJSON());
+        }
+
+        this.stats.totalRequests++;
+        this.stats.streamingRequests++;
+
+        // Usar StreamManager para manejar el stream
+        const streamInfo = this.streamManager.createStream(res, requestId, {
           model,
-          messages: this.optimizeMessages(messages),
+          messages,
           images,
           options
         });
-        
-        // Guardar en cache (LRUCache maneja TTL y tamaño máximo automáticamente)
-        if (result.success && result.content) {
-          this.cache.set(cacheKey, {
-            response: result.content,
-            timestamp: Date.now()
+
+        try {
+          await this.streamChat({
+            model,
+            messages: this.optimizeMessages(messages),
+            images,
+            options,
+            requestId,
+            onToken: (token, fullContent) => {
+              this.streamManager.sendToken(requestId, token, fullContent);
+            },
+            onComplete: fullContent => {
+              this.streamManager.complete(requestId, fullContent);
+              this.currentRequests--;
+            },
+            onError: error => {
+              this.streamManager.sendError(requestId, error);
+              this.stats.errors++;
+              this.currentRequests--;
+            }
+          });
+        } catch (error) {
+          this.streamManager.sendError(requestId, error);
+          this.stats.errors++;
+          this.currentRequests--;
+        }
+      }
+    );
+
+    // Chat sin streaming (más rápido para respuestas cortas) - con validación
+    this.app.post(
+      '/ollama/chat',
+      this.validator.validate('/ollama/chat', ValidatorMiddleware.commonSchemas.ollamaChatRequest),
+      async (req, res) => {
+        // Verificar límite de requests concurrentes
+        if (this.currentRequests >= this.maxConcurrentRequests) {
+          return res.status(429).json({
+            error: 'Demasiadas requests concurrentes. Intenta de nuevo en un momento.'
           });
         }
-        
-        this.currentRequests--;
-        res.json(result);
-      } catch (error) {
-        this.stats.errors++;
-        this.currentRequests--;
-        res.status(500).json({
-          success: false,
-          error: error.message || 'Error desconocido'
-        });
+
+        this.currentRequests++;
+        const { model, messages, images, options = {} } = req.body;
+
+        if (!model || !messages) {
+          this.currentRequests--;
+          const { APIError } = require('../utils/api-error');
+          const error = APIError.invalidRequest('model y messages son requeridos', {
+            missing: !model ? ['model'] : ['messages']
+          });
+          return res.status(error.statusCode).json(error.toJSON());
+        }
+
+        this.stats.totalRequests++;
+
+        try {
+          // Verificar cache primero
+          const cacheKey = this.generateCacheKey(messages, model);
+          const cached = this.cache.get(cacheKey);
+          if (cached) {
+            // LRUCache maneja TTL automáticamente, si existe no está expirado
+            this.stats.cacheHits++;
+            this.currentRequests--;
+            return res.json({
+              success: true,
+              content: cached.response,
+              cached: true
+            });
+          }
+
+          this.stats.cacheMisses++;
+
+          const result = await this.optimizedChat({
+            model,
+            messages: this.optimizeMessages(messages),
+            images,
+            options
+          });
+
+          // Guardar en cache (LRUCache maneja TTL y tamaño máximo automáticamente)
+          if (result.success && result.content) {
+            this.cache.set(cacheKey, {
+              response: result.content,
+              timestamp: Date.now()
+            });
+          }
+
+          this.currentRequests--;
+          res.json(result);
+        } catch (error) {
+          this.stats.errors++;
+          this.currentRequests--;
+          res.status(500).json({
+            success: false,
+            error: error.message || 'Error desconocido'
+          });
+        }
       }
-    });
-    
+    );
+
     // Estadísticas
     this.app.get('/ollama/stats', (req, res) => {
       res.json(this.stats);
     });
-    
+
     // Limpiar cache
     this.app.post('/ollama/cache/clear', (req, res) => {
       this.cache.clear();
       res.json({ success: true, message: 'Cache limpiado' });
     });
-    
+
     // Cancelar stream
     this.app.post('/ollama/stream/cancel', (req, res) => {
       const { requestId } = req.body;
-      if (requestId && this.activeStreams.has(requestId)) {
-        const stream = this.activeStreams.get(requestId);
-        stream.res.end();
-        this.activeStreams.delete(requestId);
+      if (requestId && this.streamManager.activeStreams.has(requestId)) {
+        this.streamManager.closeStream(requestId, 'cancel');
         this.currentRequests--;
         res.json({ success: true, message: 'Stream cancelado' });
       } else {
@@ -500,7 +478,7 @@ class OllamaMCPServer extends EventEmitter {
       }
     });
   }
-  
+
   /**
    * Optimizar mensajes (truncar si son muy largos)
    */
@@ -516,7 +494,7 @@ class OllamaMCPServer extends EventEmitter {
       return msg;
     });
   }
-  
+
   /**
    * Generar clave de cache
    */
@@ -524,7 +502,7 @@ class OllamaMCPServer extends EventEmitter {
     const content = JSON.stringify({ messages, model });
     return crypto.createHash('md5').update(content).digest('hex');
   }
-  
+
   /**
    * Limpiar cache expirado (LRUCache lo hace automáticamente, pero mantenemos método para compatibilidad)
    */
@@ -535,7 +513,7 @@ class OllamaMCPServer extends EventEmitter {
       this.logger.debug(`Cache limpiado: ${cleaned} elementos expirados removidos`);
     }
   }
-  
+
   /**
    * Chat optimizado (sin streaming)
    */
@@ -567,11 +545,11 @@ class OllamaMCPServer extends EventEmitter {
           httpAgent: this.httpAgent
         }
       );
-      
+
       if (!response.data || !response.data.message || !response.data.message.content) {
         throw new Error('Respuesta inválida de Ollama');
       }
-      
+
       return {
         success: true,
         content: response.data.message.content,
@@ -584,7 +562,7 @@ class OllamaMCPServer extends EventEmitter {
       };
     }
   }
-  
+
   /**
    * Chat con streaming (SSE)
    */
@@ -608,23 +586,26 @@ class OllamaMCPServer extends EventEmitter {
           httpAgent: this.httpAgent
         }
       );
-      
+
       let fullContent = '';
-      
-      response.data.on('data', (chunk) => {
-        const lines = chunk.toString().split('\n').filter(line => line.trim());
-        
+
+      response.data.on('data', chunk => {
+        const lines = chunk
+          .toString()
+          .split('\n')
+          .filter(line => line.trim());
+
         for (const line of lines) {
           try {
             const data = JSON.parse(line);
             if (data.message && data.message.content) {
               const content = data.message.content;
               fullContent += content;
-              
+
               if (onToken) {
                 onToken(content, fullContent);
               }
-              
+
               if (data.done && onComplete) {
                 onComplete(fullContent);
               }
@@ -634,14 +615,14 @@ class OllamaMCPServer extends EventEmitter {
           }
         }
       });
-      
+
       response.data.on('end', () => {
         if (fullContent && onComplete) {
           onComplete(fullContent);
         }
       });
-      
-      response.data.on('error', (error) => {
+
+      response.data.on('error', error => {
         if (onError) {
           onError(error);
         }
@@ -652,7 +633,7 @@ class OllamaMCPServer extends EventEmitter {
       }
     }
   }
-  
+
   /**
    * Iniciar servidor
    */
@@ -664,8 +645,8 @@ class OllamaMCPServer extends EventEmitter {
           this.setupGracefulShutdown();
           resolve(true);
         });
-        
-        this.server.on('error', (error) => {
+
+        this.server.on('error', error => {
           if (error.code === 'EADDRINUSE') {
             this.logger.error(`Puerto ${this.port} ya está en uso`, null, {
               suggestion: `Intenta detener el proceso que usa el puerto ${this.port}`
@@ -680,61 +661,53 @@ class OllamaMCPServer extends EventEmitter {
       }
     });
   }
-  
+
   /**
    * Configurar graceful shutdown
    */
   setupGracefulShutdown() {
-    const shutdown = async (signal) => {
+    const shutdown = async signal => {
       this.logger.info(`Recibida señal ${signal}, iniciando cierre graceful...`);
-      
+
       // Detener aceptar nuevas conexiones
       if (this.server) {
         this.server.close(() => {
           this.logger.info('Servidor HTTP cerrado');
         });
       }
-      
+
       // Cerrar streams activos
-      for (const [streamId, stream] of this.activeStreams.entries()) {
-        try {
-          if (stream.destroy) {
-            stream.destroy();
-          }
-        } catch (error) {
-          this.logger.warn(`Error cerrando stream ${streamId}`, { error: error.message });
-        }
-      }
-      this.activeStreams.clear();
-      
+      // Cerrar todos los streams usando StreamManager
+      this.streamManager.closeAll('stop');
+
       // Esperar a que requests en curso terminen (máximo 30 segundos)
       const maxWait = 30000;
       const startTime = Date.now();
-      
-      while (this.currentRequests > 0 && (Date.now() - startTime) < maxWait) {
+
+      while (this.currentRequests > 0 && Date.now() - startTime < maxWait) {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
-      
+
       if (this.currentRequests > 0) {
         this.logger.warn(`${this.currentRequests} requests aún en curso después del timeout`);
       }
-      
+
       // Cerrar pool de conexiones HTTP
       if (this.httpAgent) {
         this.httpAgent.destroy();
       }
-      
+
       // Limpiar recursos
       this.cache.clear();
       this.logger.info('Cierre graceful completado');
-      
+
       process.exit(0);
     };
-    
+
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));
   }
-  
+
   /**
    * Detener servidor
    */
@@ -744,21 +717,21 @@ class OllamaMCPServer extends EventEmitter {
       clearInterval(interval);
     });
     this.cleanupIntervals = [];
-    
+
     // Cerrar servidor HTTP
     if (this.server) {
-      return new Promise((resolve) => {
+      return new Promise(resolve => {
         this.server.close(() => {
           this.logger.info('Ollama MCP Server detenido');
           resolve();
         });
       });
     }
-    
+
     // Limpiar recursos
     this.cache.destroy(); // LRUCache tiene método destroy para limpiar intervals
-    this.activeStreams.clear();
-    
+    this.streamManager.shutdown(); // Cerrar todos los streams y limpiar recursos
+
     // Cerrar pool de conexiones HTTP
     if (this.httpAgent) {
       this.httpAgent.destroy();
@@ -777,4 +750,3 @@ if (require.main === module) {
 }
 
 module.exports = OllamaMCPServer;
-
