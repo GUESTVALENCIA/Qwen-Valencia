@@ -311,7 +311,9 @@ class StateManager {
       const saved = localStorage.getItem(this.persistenceKey);
       if (saved) {
         const parsedState = JSON.parse(saved);
-        this.state = { ...this.state, ...parsedState };
+        // FIX: Congelar el estado cargado para mantener la inmutabilidad
+        const mergedState = { ...this.state, ...parsedState };
+        this.state = this.enableImmutable ? this.deepFreeze(mergedState) : mergedState;
         this.logger.info('State loaded from storage', { keys: Object.keys(parsedState) });
       }
     } catch (error) {
