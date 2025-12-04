@@ -67,6 +67,7 @@ class VariablesLoader {
               console.log(`ℹ️ Variable ${key} no codificada, usando valor directo`);
             }
             // Limpiar nuevamente después de decodificar (eliminar caracteres de control)
+            // eslint-disable-next-line no-control-regex
             value = value.trim().replace(/['"]/g, '').replace(/\s+/g, '').replace(/[\x00-\x1F\x7F-\x9F]/g, '');
           }
           process.env[key] = value;
@@ -112,6 +113,7 @@ class VariablesLoader {
         }
         
         // Asegurar que no hay caracteres de control al inicio/final
+        // eslint-disable-next-line no-control-regex
         value = value.replace(/^[\x00-\x1F\x7F-\x9F]+|[\x00-\x1F\x7F-\x9F]+$/g, '');
         
         // Guardar el valor completo sin truncar
@@ -167,6 +169,7 @@ MODE=auto
     if (!value) return null;
 
     // Limpiar primero: eliminar espacios, comillas, saltos de línea
+    // eslint-disable-next-line no-control-regex
     value = value.trim().replace(/['"]/g, '').replace(/\s+/g, '').replace(/[\x00-\x1F\x7F-\x9F]/g, '');
 
     // Si es una API key, intentar decodificar SOLO si parece estar codificada

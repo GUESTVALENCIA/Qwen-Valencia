@@ -291,13 +291,14 @@ class MCPUniversal {
           case 'cmd':
             command = code;
             break;
-          default:
+          default: {
             const { APIError } = require('../utils/api-error');
             const error = APIError.invalidRequest(`Lenguaje no soportado: ${language}`, {
               language,
               supported: ['python', 'javascript', 'bash', 'powershell', 'cmd']
             });
             return res.status(error.statusCode).json(error.toJSON());
+          }
         }
         
         this.logger.debug('Ejecutando código', { language, codePreview: code.substring(0, 100) });

@@ -22,6 +22,7 @@ class APIKeyCleaner {
     cleaned = cleaned.replace(/\s+/g, '');
     
     // Paso 3: Eliminar caracteres de control (incluyendo \r, \n, \t, etc.)
+    // eslint-disable-next-line no-control-regex
     cleaned = cleaned.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
     
     // Paso 4: Eliminar caracteres no ASCII (solo mantener ASCII printable)

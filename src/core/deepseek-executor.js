@@ -24,6 +24,7 @@ class DeepSeekExecutor {
     let groqApiKey = config.groqApiKey || process.env.GROQ_API_KEY;
     if (groqApiKey) {
       // Limpiar primero manualmente para asegurar que no hay caracteres ocultos
+      // eslint-disable-next-line no-control-regex
       groqApiKey = groqApiKey.trim().replace(/['"]/g, '').replace(/\s+/g, '').replace(/[\x00-\x1F\x7F-\x9F]/g, '');
       
       const cleaned = APIKeyCleaner.cleanAndValidateGroq(groqApiKey);
@@ -199,6 +200,7 @@ RECUERDA: ERES ESPECIALIZADO EN CÓDIGO. GENERAS Y EJECUTAS REALMENTE.`;
           const cleanApiKey = cleaned.cleaned;
           
           // Validar que no tenga caracteres inválidos para headers
+          // eslint-disable-next-line no-control-regex
           if (/[\r\n\t\x00-\x1F\x7F-\x9F]/.test(cleanApiKey)) {
             throw APIError.invalidAPIKey({ 
               reason: 'Caracteres inválidos en API key',

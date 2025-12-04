@@ -224,20 +224,27 @@ class Logger {
  * Factory para crear instancias de logger
  */
 class LoggerFactory {
-  static instances = new Map();
+  static getInstances() {
+    if (!LoggerFactory._instances) {
+      LoggerFactory._instances = new Map();
+    }
+    return LoggerFactory._instances;
+  }
 
   static create(service = 'qwen-valencia-frontend', options = {}) {
-    if (this.instances.has(service)) {
-      return this.instances.get(service);
+    const instancesMap = this.getInstances();
+    if (instancesMap.has(service)) {
+      return instancesMap.get(service);
     }
 
     const logger = new Logger({ service, ...options });
-    this.instances.set(service, logger);
+    instancesMap.set(service, logger);
     return logger;
   }
 
   static get(service = 'qwen-valencia-frontend') {
-    return this.instances.get(service) || this.create(service);
+    const instancesMap = this.getInstances();
+    return instancesMap.get(service) || this.create(service);
   }
 }
 

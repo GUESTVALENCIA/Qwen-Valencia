@@ -177,9 +177,10 @@ class FrontendValidator {
       return value;
     }
     
-    return value
-      .replace(/[\x00-\x1F\x7F]/g, '')
-      .trim();
+    // Eliminar caracteres de control - necesario para seguridad
+    // eslint-disable-next-line no-control-regex
+    const cleaned = value.replace(/[\x00-\x1F\x7F]/g, '');
+    return cleaned.trim();
   }
 
   /**
