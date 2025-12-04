@@ -6,7 +6,7 @@
  * ════════════════════════════════════════════════════════════════════════════
  */
 
-const { createValidator, VALIDATION_TYPES, quickValidate } = require('./parameter-validator');
+const { createValidator, quickValidate } = require('./parameter-validator');
 const { globalTypeValidator } = require('./type-validator');
 const { validateSchema: validateIPCSchema, IPC_SCHEMAS } = require('../app/ipc-validator');
 const { LoggerFactory } = require('./logger');
