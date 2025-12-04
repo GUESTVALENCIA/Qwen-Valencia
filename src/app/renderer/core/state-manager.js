@@ -10,6 +10,9 @@
  */
 class StateManager {
   constructor(initialState = {}, options = {}) {
+    // FIX: Definir enableImmutable ANTES de llamar deepFreeze() para que funcione correctamente
+    this.enableImmutable = options.enableImmutable !== false; // Por defecto habilitado
+    
     // FIX: Hacer estado inmutable usando deep freeze
     this.state = this.deepFreeze({ ...initialState });
     this.observers = new Map();
@@ -18,7 +21,6 @@ class StateManager {
     this.maxHistorySize = options.maxHistorySize || 50;
     this.enablePersistence = options.enablePersistence !== false;
     this.persistenceKey = options.persistenceKey || 'qwen-valencia-state';
-    this.enableImmutable = options.enableImmutable !== false; // Por defecto habilitado
     this.logger = (typeof window !== 'undefined' && window.defaultLogger) || console;
 
     // Cargar estado persistido
