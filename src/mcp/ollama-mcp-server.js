@@ -59,8 +59,15 @@ class OllamaMCPServer extends EventEmitter {
       timeout: 60000
     });
     
-    // Cache inteligente
-    this.cache = new Map();
+    // Cache inteligente con LRU
+    const LRUCache = require('../utils/lru-cache');
+    this.cache = new LRUCache({
+      maxSize: serviceConfig.cache?.maxSize || 200,
+      ttl: serviceConfig.cache?.ttl || 1800000,
+      onEvict: (key, value) => {
+        this.logger.debug('Elemento evictado del cache', { key });
+      }
+    });
     this.maxCacheSize = serviceConfig.cache?.maxSize || 200;
     this.cacheTTL = serviceConfig.cache?.ttl || 1800000;
     
@@ -74,6 +81,9 @@ class OllamaMCPServer extends EventEmitter {
     
     // Servidor HTTP
     this.server = null;
+    
+    // Intervals para cleanup (guardar referencias para poder limpiarlos)
+    this.cleanupIntervals = [];
     
     // Estadísticas
     this.stats = {
@@ -93,8 +103,9 @@ class OllamaMCPServer extends EventEmitter {
     this.setupRoutes();
     this.setupSwagger();
     
-    // Limpieza periódica de cache
-    setInterval(() => this.cleanCache(), 600000); // Cada 10 minutos
+    // Limpieza periódica de cache (guardar referencia)
+    const cacheCleanupInterval = setInterval(() => this.cleanCache(), 600000); // Cada 10 minutos
+    this.cleanupIntervals.push(cacheCleanupInterval);
     
     this.logger.info('Ollama MCP Server inicializado', {
       port: this.port,
@@ -223,7 +234,7 @@ class OllamaMCPServer extends EventEmitter {
         uptime: process.uptime(),
         ollamaUrl: this.ollamaUrl,
         activeStreams: this.activeStreams.size,
-        cacheSize: this.cache.size,
+        cacheSize: this.cache.size(),
         currentRequests: this.currentRequests,
         stats: this.stats,
         system: {
@@ -422,7 +433,8 @@ class OllamaMCPServer extends EventEmitter {
         // Verificar cache primero
         const cacheKey = this.generateCacheKey(messages, model);
         const cached = this.cache.get(cacheKey);
-        if (cached && (Date.now() - cached.timestamp) < this.cacheTTL) {
+        if (cached) {
+          // LRUCache maneja TTL automáticamente, si existe no está expirado
           this.stats.cacheHits++;
           this.currentRequests--;
           return res.json({
@@ -441,18 +453,12 @@ class OllamaMCPServer extends EventEmitter {
           options
         });
         
-        // Guardar en cache
+        // Guardar en cache (LRUCache maneja TTL y tamaño máximo automáticamente)
         if (result.success && result.content) {
           this.cache.set(cacheKey, {
             response: result.content,
             timestamp: Date.now()
           });
-          
-          // Limpiar cache si excede tamaño máximo
-          if (this.cache.size > this.maxCacheSize) {
-            const firstKey = this.cache.keys().next().value;
-            this.cache.delete(firstKey);
-          }
         }
         
         this.currentRequests--;
@@ -520,14 +526,13 @@ class OllamaMCPServer extends EventEmitter {
   }
   
   /**
-   * Limpiar cache expirado
+   * Limpiar cache expirado (LRUCache lo hace automáticamente, pero mantenemos método para compatibilidad)
    */
   cleanCache() {
-    const now = Date.now();
-    for (const [key, value] of this.cache.entries()) {
-      if (now - value.timestamp > this.cacheTTL) {
-        this.cache.delete(key);
-      }
+    // LRUCache limpia elementos expirados automáticamente
+    const cleaned = this.cache.cleanExpired();
+    if (cleaned > 0) {
+      this.logger.debug(`Cache limpiado: ${cleaned} elementos expirados removidos`);
     }
   }
   
@@ -734,6 +739,13 @@ class OllamaMCPServer extends EventEmitter {
    * Detener servidor
    */
   async stop() {
+    // Limpiar todos los intervals
+    this.cleanupIntervals.forEach(interval => {
+      clearInterval(interval);
+    });
+    this.cleanupIntervals = [];
+    
+    // Cerrar servidor HTTP
     if (this.server) {
       return new Promise((resolve) => {
         this.server.close(() => {
@@ -741,6 +753,15 @@ class OllamaMCPServer extends EventEmitter {
           resolve();
         });
       });
+    }
+    
+    // Limpiar recursos
+    this.cache.destroy(); // LRUCache tiene método destroy para limpiar intervals
+    this.activeStreams.clear();
+    
+    // Cerrar pool de conexiones HTTP
+    if (this.httpAgent) {
+      this.httpAgent.destroy();
     }
   }
 }

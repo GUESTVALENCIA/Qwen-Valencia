@@ -165,12 +165,11 @@ class ModelSelector {
         if (!container) return;
         
         // Usar MODELS de app.js (objeto plano)
+        // eslint-disable-next-line no-undef
         const MODELS_REF = window.MODELS || (typeof MODELS !== 'undefined' ? MODELS : {});
         
         // Filtrar solo modelos Qwen/DeepSeek (excluir 'auto')
         const modelKeys = Object.keys(MODELS_REF).filter(k => k !== 'auto');
-        
-        let html = '';
         
         // Agrupar por proveedor para mejor organización
         const ollamaModels = [];
@@ -180,52 +179,150 @@ class ModelSelector {
             const model = MODELS_REF[modelId];
             if (!model) return;
             
-            const isActive = this.currentModel === modelId;
-            const isSelected = this.selectedModels.includes(modelId);
-            
-            const modelHtml = `
-                <div class="model-item-compact ${isActive ? 'active' : ''}" 
-                     data-model="${modelId}" 
-                     data-provider="${model.provider}"
-                     data-tokens="${model.tokens || 'N/A'}"
-                     data-category="${model.category || 'General'}"
-                     data-capabilities="${JSON.stringify(model.capabilities || [])}"
-                     data-description="${(model.description || '').replace(/"/g, '&quot;')}"
-                     onmouseenter="modelSelector.showTooltip(event, this)"
-                     onmouseleave="modelSelector.hideTooltip()"
-                     onclick="modelSelector.selectModel('${modelId}', event)">
-                    <input type="checkbox" 
-                           class="model-checkbox" 
-                           ${isSelected || isActive ? 'checked' : ''}
-                           ${this.multiModel ? '' : 'style="display:none;"'}
-                           onclick="event.stopPropagation(); modelSelector.toggleSelection('${modelId}', this)">
-                    <span class="model-name-compact">${model.compact || model.name}</span>
-                    <span class="model-provider-badge">${model.provider}</span>
-                </div>
-            `;
-            
             if (model.provider === 'Ollama') {
-                ollamaModels.push({ id: modelId, html: modelHtml });
+                ollamaModels.push({ id: modelId, model });
             } else if (model.provider === 'Groq') {
-                groqModels.push({ id: modelId, html: modelHtml });
+                groqModels.push({ id: modelId, model });
             }
         });
         
-        // Renderizar con separadores por proveedor
+        // Preparar items para renderizado (con separadores)
+        const items = [];
+        
         if (ollamaModels.length > 0) {
-            html += '<div class="model-group-header">Ollama Local</div>';
-            ollamaModels.forEach(m => html += m.html);
+            items.push({ type: 'header', text: 'Ollama Local', key: 'header-ollama' });
+            ollamaModels.forEach(({ id, model }) => {
+                items.push({ type: 'model', id, model, key: id });
+            });
         }
         
         if (groqModels.length > 0) {
             if (ollamaModels.length > 0) {
-                html += '<div class="model-group-divider"></div>';
+                items.push({ type: 'divider', key: 'divider-groq' });
             }
-            html += '<div class="model-group-header">Groq API</div>';
-            groqModels.forEach(m => html += m.html);
+            items.push({ type: 'header', text: 'Groq API', key: 'header-groq' });
+            groqModels.forEach(({ id, model }) => {
+                items.push({ type: 'model', id, model, key: id });
+            });
         }
         
-        container.innerHTML = html;
+        // Usar actualización incremental si está disponible
+        if (typeof window !== 'undefined' && window.updateListIncremental) {
+            const result = window.updateListIncremental(
+                container,
+                items,
+                (item) => this.renderModelItem(item),
+                (item) => item.key,
+                {
+                    itemSelector: '[data-key]',
+                    keyAttribute: 'data-key',
+                    preserveOrder: true
+                }
+            );
+            
+            // Si es la primera renderización, usar innerHTML para los headers/dividers
+            if (result.added === items.length) {
+                // Primera vez, renderizar todo
+                this.renderModelListFull(container, items);
+            }
+        } else {
+            // Fallback: renderización completa
+            this.renderModelListFull(container, items);
+        }
+    }
+    
+    /**
+     * Renderiza un item individual (modelo, header o divider)
+     */
+    renderModelItem(item) {
+        if (item.type === 'header') {
+            const header = document.createElement('div');
+            header.className = 'model-group-header';
+            header.textContent = item.text;
+            header.setAttribute('data-key', item.key);
+            return header;
+        }
+        
+        if (item.type === 'divider') {
+            const divider = document.createElement('div');
+            divider.className = 'model-group-divider';
+            divider.setAttribute('data-key', item.key);
+            return divider;
+        }
+        
+        if (item.type === 'model') {
+            const { id, model } = item;
+            const isActive = this.currentModel === id;
+            const isSelected = this.selectedModels.includes(id);
+            
+            // Crear elementos de forma segura sin innerHTML
+            const div = document.createElement('div');
+            div.className = `model-item-compact ${isActive ? 'active' : ''}`;
+            div.setAttribute('data-model', id);
+            div.setAttribute('data-key', id);
+            div.setAttribute('data-provider', model.provider || '');
+            div.setAttribute('data-tokens', String(model.tokens || 'N/A'));
+            div.setAttribute('data-category', model.category || 'General');
+            div.setAttribute('data-capabilities', JSON.stringify(model.capabilities || []));
+            div.setAttribute('data-description', (model.description || '').replace(/"/g, '&quot;'));
+            
+            // Checkbox
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'model-checkbox';
+            if (isSelected || isActive) checkbox.checked = true;
+            if (!this.multiModel) checkbox.style.display = 'none';
+            checkbox.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleSelection(id, checkbox);
+            });
+            
+            // Nombre del modelo
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'model-name-compact';
+            nameSpan.textContent = model.compact || model.name || id;
+            
+            // Badge de proveedor
+            const badgeSpan = document.createElement('span');
+            badgeSpan.className = 'model-provider-badge';
+            badgeSpan.textContent = model.provider || '';
+            
+            // Event listeners
+            div.addEventListener('mouseenter', (e) => {
+                this.showTooltip(e, div);
+            });
+            div.addEventListener('mouseleave', () => {
+                this.hideTooltip();
+            });
+            div.addEventListener('click', (e) => {
+                this.selectModel(id, e);
+            });
+            
+            div.appendChild(checkbox);
+            div.appendChild(nameSpan);
+            div.appendChild(badgeSpan);
+            
+            return div;
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Renderización completa (fallback)
+     */
+    renderModelListFull(container, items) {
+        const fragment = document.createDocumentFragment();
+        
+        items.forEach(item => {
+            const element = this.renderModelItem(item);
+            if (element) {
+                fragment.appendChild(element);
+            }
+        });
+        
+        container.innerHTML = '';
+        container.appendChild(fragment);
     }
     
     selectModel(modelId, event) {
@@ -381,6 +478,7 @@ class ModelSelector {
         const modelNameSpan = document.getElementById('modelName');
         
         if (modelNameSpan) {
+            // eslint-disable-next-line no-undef
             const MODELS_REF = window.MODELS || (typeof MODELS !== 'undefined' ? MODELS : {});
             
             if (this.currentModel === 'auto' || this.autoMode) {
@@ -420,6 +518,7 @@ class ModelSelector {
             const capabilities = JSON.parse(element.dataset.capabilities || '[]');
             const description = element.dataset.description || '';
             
+            // eslint-disable-next-line no-undef
             const MODELS_REF = window.MODELS || (typeof MODELS !== 'undefined' ? MODELS : {});
             const model = MODELS_REF[modelId];
             const modelName = model?.name || modelId;

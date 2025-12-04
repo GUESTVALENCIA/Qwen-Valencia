@@ -1,0 +1,16 @@
+# Protección de archivos críticos
+# Estos archivos NO deben ser modificados sin autorización explícita
+
+# Archivos de diseño y UI - PROTEGIDOS
+src/app/renderer/index.html -diff -merge
+src/app/renderer/styles/main.css -diff -merge
+src/app/renderer/styles/liquid-glass.css -diff -merge
+src/app/renderer/styles/chat-input.css -diff -merge
+
+# Archivos de lógica crítica - PROTEGIDOS
+src/app/renderer/components/app.js -diff -merge
+src/app/renderer/components/model-selector.js -diff -merge
+
+# Forzar line endings consistentes
+* text=auto eol=lf
+

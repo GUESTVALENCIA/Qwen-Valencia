@@ -16,15 +16,15 @@ contextBridge.exposeInMainWorld('qwenValencia', {
    * Envía un mensaje al modelo (Qwen o DeepSeek)
    * Compatible con app.js: { text, attachments, model, useAPI }
    */
-  routeMessage: async (params) => {
+  routeMessage: async (params, modality = 'text', attachments = [], options = {}) => {
     // Compatibilidad con ambas firmas
     if (typeof params === 'string') {
       // Firma antigua: routeMessage(text, modality, attachments, options)
       return await ipcRenderer.invoke('route-message', { 
         text: params, 
-        modality: arguments[1] || 'text', 
-        attachments: arguments[2] || [], 
-        options: arguments[3] || {} 
+        modality: modality || 'text', 
+        attachments: attachments || [], 
+        options: options || {} 
       });
     } else {
       // Firma nueva: routeMessage({ text, attachments, model, useAPI })

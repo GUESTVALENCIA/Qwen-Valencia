@@ -1,27 +1,48 @@
+# Dependencies
 node_modules/
-.env.pro
-qwen-valencia.env
+package-lock.json
+
+# Build outputs
 dist/
 build/
-*.log
+out/
+
+# Environment files
+.env
+.env.local
+.env.pro
+qwen-valencia.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
 .DS_Store
 Thumbs.db
 
-# Variables sensibles - TODOS los archivos .env
-*.env
-*.env.*
-.env
-.env.*
-!*.env.example
+# Logs
+*.log
+logs/
 
-# Variables codificadas
-**/variables-encoded.*
-**/*.encoded
+# Temporary files
+tmp/
+temp/
+*.tmp
 
-# Archivos con API keys y secretos
-VARIABLESFULL
-VARIABLESFULL.txt
-**/*.key
-**/*.secret
-**/*.token
+# Electron
+.electron-cache/
+.electron-builder-cache/
 
+# Backup files (NO PERMITIR BACKUPS EN EL REPO)
+*.backup
+*.bak
+*.old
+*~
+
+# Archivos protegidos - NO MODIFICAR
+# Estos archivos están protegidos y no deben ser modificados sin autorización
+# .protected/

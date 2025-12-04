@@ -120,6 +120,24 @@ electronDownload:
   cache: .electron-cache
   mirror: https://npm.taobao.org/mirrors/electron/
 
+# Optimización de builds - Enterprise Level
+# Build caching para acelerar builds incrementales
+cache: .electron-builder-cache
+
+# Builds incrementales
+# Solo reconstruir lo que cambió
+incremental: true
+
+# Optimización de archivos
+# Excluir archivos innecesarios del build
+asar: true
+asarUnpack:
+  - "**/*.{node,dll}"
+
+# Configuración de desarrollo
+# Build más rápido en desarrollo
+developmentBuild: false
+
 # Variables de entorno para builds
 env:
   CSC_IDENTITY_AUTO_DISCOVERY: true

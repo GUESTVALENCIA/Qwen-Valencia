@@ -58,8 +58,15 @@ class GroqAPIServer {
     this.maxRequestsPerKey = serviceConfig.maxRequestsPerKey || 4;
     this.blockDuration = serviceConfig.blockDuration || 60000;
     
-    // Cache inteligente
-    this.cache = new Map();
+    // Cache inteligente con LRU
+    const LRUCache = require('../utils/lru-cache');
+    this.cache = new LRUCache({
+      maxSize: serviceConfig.cache?.maxSize || 100,
+      ttl: serviceConfig.cache?.ttl || 300000,
+      onEvict: (key, value) => {
+        this.logger.debug('Elemento evictado del cache', { key });
+      }
+    });
     this.maxCacheSize = serviceConfig.cache?.maxSize || 100;
     this.cacheTTL = serviceConfig.cache?.ttl || 300000;
     
@@ -70,6 +77,9 @@ class GroqAPIServer {
     
     // Servidor HTTP
     this.server = null;
+    
+    // Intervals para cleanup (guardar referencias para poder limpiarlos)
+    this.cleanupIntervals = [];
     
     // Modelos disponibles en Groq (actualizados 2025)
     // Prioridad: Qwen y DeepSeek (modelos principales de la app)
@@ -107,8 +117,9 @@ class GroqAPIServer {
     this.setupRoutes();
     this.setupSwagger();
     
-    // Limpieza periódica de cache
-    setInterval(() => this.cleanCache(), 300000); // Cada 5 minutos
+    // Limpieza periódica de cache (guardar referencia)
+    const cacheCleanupInterval = setInterval(() => this.cleanCache(), 300000); // Cada 5 minutos
+    this.cleanupIntervals.push(cacheCleanupInterval);
     
     this.logger.info('Groq API Server inicializado', {
       port: this.port,
@@ -220,7 +231,8 @@ class GroqAPIServer {
       // Verificar cache primero
       const cacheKey = this.generateCacheKey(messages, model);
       const cached = this.cache.get(cacheKey);
-      if (cached && (Date.now() - cached.timestamp) < this.cacheTTL) {
+      if (cached) {
+        // LRUCache maneja TTL automáticamente, si existe no está expirado
         this.stats.cacheHits++;
         this.currentRequests--;
         this.metrics.increment('cache_hits', {});
@@ -292,17 +304,11 @@ class GroqAPIServer {
         
         const content = response.data.choices[0].message.content;
         
-        // Guardar en cache
+        // Guardar en cache (LRUCache maneja TTL y tamaño máximo automáticamente)
         this.cache.set(cacheKey, {
           response: content,
           timestamp: Date.now()
         });
-        
-        // Limpiar cache si excede tamaño máximo
-        if (this.cache.size > this.maxCacheSize) {
-          const firstKey = this.cache.keys().next().value;
-          this.cache.delete(firstKey);
-        }
         
         this.stats.successfulRequests++;
         this.currentRequests--;
@@ -369,7 +375,7 @@ class GroqAPIServer {
         uptime: process.uptime(),
         apiKeysCount: this.apiKeys.length,
         currentKeyIndex: this.currentKeyIndex,
-        cacheSize: this.cache.size,
+        cacheSize: this.cache.size(),
         stats: this.stats,
         system: {
           memory: {
@@ -458,7 +464,7 @@ class GroqAPIServer {
         service: 'groq-api',
         apiKeysCount: this.apiKeys.length,
         currentKeyIndex: this.currentKeyIndex,
-        cacheSize: this.cache.size,
+        cacheSize: this.cache.size(),
         stats: this.stats
       });
     });
@@ -552,11 +558,10 @@ class GroqAPIServer {
    * Limpiar cache expirado
    */
   cleanCache() {
-    const now = Date.now();
-    for (const [key, value] of this.cache.entries()) {
-      if (now - value.timestamp > this.cacheTTL) {
-        this.cache.delete(key);
-      }
+    // LRUCache limpia elementos expirados automáticamente
+    const cleaned = this.cache.cleanExpired();
+    if (cleaned > 0) {
+      this.logger.debug(`Cache limpiado: ${cleaned} elementos expirados removidos`);
     }
   }
   
@@ -629,6 +634,13 @@ class GroqAPIServer {
    * Detener servidor
    */
   async stop() {
+    // Limpiar todos los intervals
+    this.cleanupIntervals.forEach(interval => {
+      clearInterval(interval);
+    });
+    this.cleanupIntervals = [];
+    
+    // Cerrar servidor HTTP
     if (this.server) {
       return new Promise((resolve) => {
         this.server.close(() => {
@@ -636,6 +648,14 @@ class GroqAPIServer {
           resolve();
         });
       });
+    }
+    
+    // Limpiar recursos
+    this.cache.destroy(); // LRUCache tiene método destroy para limpiar intervals
+    
+    // Cerrar pool de conexiones HTTP si existe
+    if (this.httpAgent) {
+      this.httpAgent.destroy();
     }
   }
 }

@@ -71,7 +71,7 @@ const ALLOWED_CHANNELS = {
   ],
   
   // Canales de multi-ventana (validación básica)
-  window: [
+  multiWindow: [
     'create-window',
     'get-windows'
   ],
@@ -90,6 +90,7 @@ const RATE_LIMIT_MAX = {
   write: 30,
   control: 20,
   window: 10,
+  multiWindow: 10,
   media: 15,
   lab: 5,
   terminal: 10,

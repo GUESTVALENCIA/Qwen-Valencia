@@ -228,7 +228,19 @@ class ServiceMeshClient {
    */
   async healthCheck(serviceName) {
     try {
-      const result = await this.get(serviceName, '/health', {
+      // Obtener servicio del registro
+      const service = globalServiceRegistry.getService(serviceName);
+      if (!service) {
+        return {
+          healthy: false,
+          error: 'Service not found in registry'
+        };
+      }
+      
+      // Usar healthEndpoint del servicio, o '/health' como default
+      const healthPath = service.healthEndpoint || '/health';
+      
+      const result = await this.get(serviceName, healthPath, {
         timeout: 5000,
         retries: 1
       });

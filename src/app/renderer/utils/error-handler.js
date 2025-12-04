@@ -329,9 +329,9 @@ function getErrorHandler() {
  * @param {Error|Response} error - Error o Response de fetch
  * @param {string} source - Fuente del error
  * @param {Object} metadata - Metadatos adicionales
- * @returns {Object} - Información del error
+ * @returns {Promise<Object>} - Información del error
  */
-function handleAPIError(error, source = 'api', metadata = {}) {
+async function handleAPIError(error, source = 'api', metadata = {}) {
     const handler = getErrorHandler();
     
     let errorObj = error;
@@ -344,27 +344,28 @@ function handleAPIError(error, source = 'api', metadata = {}) {
                    status >= 400 ? ErrorSeverity.MEDIUM : ErrorSeverity.LOW;
         
         // Intentar parsear respuesta JSON para obtener APIError
-        error.json().then(data => {
-            if (data && data.error && data.error.code) {
+        try {
+            const data = await error.json();
+            if (data?.error?.code) {
                 // Es un APIError del backend
                 errorObj = {
                     code: data.error.code,
                     message: data.error.message,
-                    statusCode: data.error.statusCode || status,
-                    details: data.error.details || {},
-                    retryable: data.error.retryable || false,
+                    statusCode: data.error.statusCode ?? status,
+                    details: data.error.details ?? {},
+                    retryable: data.error.retryable ?? false,
                     timestamp: data.error.timestamp
                 };
             } else {
-                errorObj = new Error(data.error || data.message || `API Error: ${status} ${error.statusText || 'Unknown'}`);
+                errorObj = new Error(data?.error ?? data?.message ?? `API Error: ${status} ${error.statusText ?? 'Unknown'}`);
                 errorObj.status = status;
                 errorObj.statusText = error.statusText;
             }
-        }).catch(() => {
-            errorObj = new Error(`API Error: ${status} ${error.statusText || 'Unknown'}`);
+        } catch {
+            errorObj = new Error(`API Error: ${status} ${error.statusText ?? 'Unknown'}`);
             errorObj.status = status;
             errorObj.statusText = error.statusText;
-        });
+        }
         
         metadata.status = status;
         metadata.statusText = error.statusText;

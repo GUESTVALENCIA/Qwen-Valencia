@@ -1,0 +1,29 @@
+[1mdiff --git a/src/orchestrator/model-router.js b/src/orchestrator/model-router.js[m
+[1mindex ab82f8d..3928dcf 100644[m
+[1m--- a/src/orchestrator/model-router.js[m
+[1m+++ b/src/orchestrator/model-router.js[m
+[36m@@ -13,6 +13,10 @@[m
+ const QwenExecutor = require('../core/qwen-executor');[m
+ const DeepSeekExecutor = require('../core/deepseek-executor');[m
+ [m
+[32m+[m[32m/**[m
+[32m+[m[32m * @typedef {import('../types')} Types[m
+[32m+[m[32m */[m
+[32m+[m
+ class ModelRouter {[m
+   constructor(config = {}) {[m
+     this.qwen = new QwenExecutor(config);[m
+[36m@@ -68,6 +72,13 @@[m [mclass ModelRouter {[m
+ [m
+   /**[m
+    * Ejecuta una petición usando el modelo apropiado[m
+[32m+[m[32m   * @param {string} text - Texto del mensaje[m
+[32m+[m[32m   * @param {string} modality - Modalidad ('text'|'image'|'vision')[m
+[32m+[m[32m   * @param {Types.ImageAttachment[]} attachments - Attachments (imágenes)[m
+[32m+[m[32m   * @param {Object} options - Opciones adicionales[m
+[32m+[m[32m   * @param {Types.ModelId} [options.model] - Modelo específico a usar[m
+[32m+[m[32m   * @param {boolean} [options.useAPI] - Si usar API o local[m
+[32m+[m[32m   * @returns {Promise<Types.MessageResponse>} Respuesta del modelo[m
+    */[m
+   async route(text, modality = 'text', attachments = [], options = {}) {[m
+     try {[m

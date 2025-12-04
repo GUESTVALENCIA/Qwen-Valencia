@@ -31,6 +31,7 @@ const terminalManager = require('./terminal');
 const { globalServiceRegistry } = require('../services/service-registry');
 const { globalHealthAggregator } = require('../services/health-aggregator');
 const { globalTracer } = require('../services/distributed-tracing');
+const { getServiceReconnectionManager } = require('../services/service-reconnection');
 
 // Inicializar logger estructurado
 const logger = LoggerFactory.create({ service: 'electron-main' });
@@ -63,6 +64,9 @@ let heygenTokenService;
 let conversationService; // Servicio de conversación
 let deepgramService; // Instancia global de DeepgramService
 let tray = null;
+
+// Sistema de lazy loading mejorado
+const LazyLoader = require('../utils/lazy-loader');
 
 // Módulos cargados bajo demanda (lazy loading)
 const lazyModules = {
@@ -252,6 +256,7 @@ function createWindow() {
     height: windowBounds.height || 800,
     x: windowBounds.x,
     y: windowBounds.y,
+    frame: false, // Eliminar barra nativa de Windows (usamos titlebar custom)
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -593,6 +598,7 @@ function initializeModelRouter() {
   let groqApiKey = variablesLoader.get('GROQ_API_KEY') || process.env.GROQ_API_KEY;
   if (groqApiKey) {
     // Limpiar API key: eliminar espacios, comillas, saltos de línea, caracteres de control
+    // eslint-disable-next-line no-control-regex
     groqApiKey = groqApiKey.trim().replace(/['"]/g, '').replace(/\s+/g, '').replace(/[\x00-\x1F\x7F-\x9F]/g, '');
     
     // Validar formato básico
@@ -944,26 +950,18 @@ ipcMain.handle('execute-in-lab', validateIPC('execute-in-lab', async (event, { l
  * Handler para transcribir audio (con validación IPC)
  */
 ipcMain.handle('transcribe-audio', validateIPC('transcribe-audio', async (event, { audio, mimeType }) => {
-  try {
-    // Intentar usar Web Speech API si está disponible
-    // Por ahora, retornar error para que el frontend use Web Speech API directamente
-    return {
-      success: false,
-      error: 'Backend de transcripción no implementado. Usando Web Speech API.'
-    };
-  } catch (error) {
-    logger.error('Error transcribiendo audio', { error: error.message, stack: error.stack });
-    return {
-      success: false,
-      error: error.message
-    };
-  }
+  // Intentar usar Web Speech API si está disponible
+  // Por ahora, retornar error para que el frontend use Web Speech API directamente
+  return {
+    success: false,
+    error: 'Backend de transcripción no implementado. Usando Web Speech API.'
+  };
 }));
 
 /**
  * Handler para transcribir audio con DeepGram
  */
-ipcMain.handle('deepgram-transcribe', async (event, params) => {
+ipcMain.handle('deepgram-transcribe', validateIPC('deepgram-transcribe', async (event, params) => {
   try {
     if (!deepgramService) {
       const DeepgramService = require('../services/deepgram-service');
@@ -989,7 +987,7 @@ ipcMain.handle('deepgram-transcribe', async (event, params) => {
       error: error.message
     };
   }
-});
+}));
 
 /**
  * Handler para iniciar DeepGram Live Transcription
@@ -1040,7 +1038,7 @@ ipcMain.handle('deepgram-start-live', validateIPC('deepgram-start-live', async (
 /**
  * Handler para detener DeepGram Live Transcription
  */
-ipcMain.handle('deepgram-stop-live', async (event) => {
+ipcMain.handle('deepgram-stop-live', validateIPC('deepgram-stop-live', async (event) => {
   try {
     if (deepgramService) {
       deepgramService.stopLiveTranscription();
@@ -1056,12 +1054,12 @@ ipcMain.handle('deepgram-stop-live', async (event) => {
       error: error.message
     };
   }
-});
+}));
 
 /**
  * Handler para enviar audio a DeepGram Live
  */
-ipcMain.handle('deepgram-send-audio', async (event, { audio }) => {
+ipcMain.handle('deepgram-send-audio', validateIPC('deepgram-send-audio', async (event, { audio }) => {
   try {
     if (!deepgramService) {
       return {
@@ -1093,7 +1091,7 @@ ipcMain.handle('deepgram-send-audio', async (event, { audio }) => {
       error: error.message
     };
   }
-});
+}));
 
 /**
  * Handler para iniciar conversación
@@ -1215,8 +1213,18 @@ ipcMain.handle('heygen-interrupt', async (event) => {
 /**
  * Handler para crear ventana flotante de avatar
  */
-ipcMain.handle('create-floating-avatar-window', async (event, { videoSrc }) => {
+ipcMain.handle('create-floating-avatar-window', validateIPC('create-floating-avatar-window', async (event, { videoSrc }) => {
   try {
+    // Validar videoSrc para prevenir XSS
+    if (!videoSrc || typeof videoSrc !== 'string') {
+      throw new Error('videoSrc debe ser una cadena válida');
+    }
+    
+    // Sanitizar videoSrc (solo permitir URLs data: o http/https)
+    if (!videoSrc.startsWith('data:') && !videoSrc.startsWith('http://') && !videoSrc.startsWith('https://')) {
+      throw new Error('videoSrc debe ser una URL válida');
+    }
+    
     // Crear ventana flotante para avatar
     const { BrowserWindow } = require('electron');
     
@@ -1232,7 +1240,9 @@ ipcMain.handle('create-floating-avatar-window', async (event, { videoSrc }) => {
       }
     });
     
-    avatarWindow.loadURL(`data:text/html,<html><body style="margin:0;background:transparent;"><video src="${videoSrc}" autoplay playsinline style="width:100%;height:100%;object-fit:contain;"></video></body></html>`);
+    // Escapar videoSrc para prevenir XSS en data URL
+    const escapedVideoSrc = videoSrc.replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    avatarWindow.loadURL(`data:text/html,<html><body style="margin:0;background:transparent;"><video src="${escapedVideoSrc}" autoplay playsinline style="width:100%;height:100%;object-fit:contain;"></video></body></html>`);
     
     return {
       success: true,
@@ -1245,12 +1255,12 @@ ipcMain.handle('create-floating-avatar-window', async (event, { videoSrc }) => {
       error: error.message
     };
   }
-});
+}));
 
 /**
  * Handler para iniciar MCP Master Server
  */
-ipcMain.handle('start-mcp-master', async (event) => {
+ipcMain.handle('start-mcp-master', validateIPC('start-mcp-master', async (event) => {
   try {
     if (mcpServer) {
       return {
@@ -1272,12 +1282,12 @@ ipcMain.handle('start-mcp-master', async (event) => {
       error: error.message
     };
   }
-});
+}));
 
 /**
  * Handler para detener MCP Master Server
  */
-ipcMain.handle('stop-mcp-master', async (event) => {
+ipcMain.handle('stop-mcp-master', validateIPC('stop-mcp-master', async (event) => {
   try {
     if (mcpServer && mcpServer.server) {
       mcpServer.server.close();
@@ -1295,7 +1305,7 @@ ipcMain.handle('stop-mcp-master', async (event) => {
       error: error.message
     };
   }
-});
+}));
 
 /**
  * Handler para obtener estado de MCP Master Server
@@ -1413,7 +1423,7 @@ ipcMain.handle('get-shared-state', async (event) => {
 /**
  * Handler para actualizar estado compartido desde el frontend
  */
-ipcMain.handle('update-shared-state', async (event, updates) => {
+ipcMain.handle('update-shared-state', validateIPC('update-shared-state', async (event, updates) => {
   try {
     if (!updates || typeof updates !== 'object') {
       throw new Error('Updates debe ser un objeto');
@@ -1444,12 +1454,12 @@ ipcMain.handle('update-shared-state', async (event, updates) => {
       error: error.message
     };
   }
-});
+}));
 
 /**
  * Handler para sincronizar estado completo (bidireccional)
  */
-ipcMain.handle('sync-state', async (event, frontendState) => {
+ipcMain.handle('sync-state', validateIPC('sync-state', async (event, frontendState) => {
   try {
     // Merge inteligente: backend tiene prioridad para ciertos campos
     const mergedState = {
@@ -1480,7 +1490,7 @@ ipcMain.handle('sync-state', async (event, frontendState) => {
       error: error.message
     };
   }
-});
+}));
 
 /**
  * Listener para cambios de estado desde el frontend
@@ -1760,17 +1770,29 @@ async function loadLazyModule(moduleName) {
 }
 
 /**
- * Handler para cargar módulo bajo demanda
+ * Handler para cargar módulo bajo demanda (mejorado con LazyLoader)
+ * @param {Object} event - Evento IPC
+ * @param {Object} params - Parámetros
+ * @param {string} params.moduleName - Nombre del módulo a cargar
+ * @param {boolean} params.forceReload - Forzar recarga
+ * @returns {Promise<Object>} Resultado de la carga
  */
-ipcMain.handle('load-lazy-module', validateIPC('load-lazy-module', async (event, { moduleName }) => {
+ipcMain.handle('load-lazy-module', validateIPC('load-lazy-module', async (event, { moduleName, forceReload = false }) => {
   try {
-    await loadLazyModule(moduleName);
+    const module = await LazyLoader.loadLazyModule(moduleName, { forceReload });
+    const stats = LazyLoader.getStats();
+    
     return {
       success: true,
-      moduleName
+      moduleName,
+      stats: {
+        loadedModules: stats.loadedModules,
+        hitRate: stats.hitRate,
+        avgLoadTime: stats.avgLoadTime
+      }
     };
   } catch (error) {
-    logger.error('Error en load-lazy-module', { moduleName, error: error.message });
+    logger.error('Error en load-lazy-module', { moduleName, error: error.message, stack: error.stack });
     return {
       success: false,
       error: error.message
@@ -1796,15 +1818,68 @@ app.whenReady().then(async () => {
   globalHealthAggregator.start();
   logger.info('Health Aggregator iniciado');
   
+  // Inicializar Service Reconnection Manager
+  const serviceReconnectionManager = getServiceReconnectionManager();
+  
+  // Registrar servicios MCP para reconexión automática
+  serviceReconnectionManager.registerService(
+    'ollama-mcp-server',
+    {
+      name: 'Ollama MCP Server',
+      url: 'http://localhost:6002'
+    },
+    async () => {
+      const ollamaRunning = await checkServerHealth('http://localhost:6002/ollama/health');
+      if (!ollamaRunning) {
+        logger.info('Reconectando Ollama MCP Server');
+        ollamaMcpServer = new OllamaMCPServer();
+        await ollamaMcpServer.start();
+        logger.info('Ollama MCP Server reconectado');
+      }
+    },
+    async () => {
+      return await checkServerHealth('http://localhost:6002/ollama/health', 3000);
+    }
+  );
+  
+  serviceReconnectionManager.registerService(
+    'groq-api-server',
+    {
+      name: 'Groq API Server',
+      url: 'http://localhost:6003'
+    },
+    async () => {
+      const groqRunning = await checkServerHealth('http://localhost:6003/groq/health');
+      if (!groqRunning) {
+        logger.info('Reconectando Groq API Server');
+        groqApiServer = new GroqAPIServer();
+        await groqApiServer.start();
+        logger.info('Groq API Server reconectado');
+      }
+    },
+    async () => {
+      return await checkServerHealth('http://localhost:6003/groq/health', 3000);
+    }
+  );
+  
+  // Iniciar health checks de reconexión
+  serviceReconnectionManager.startHealthChecks();
+  logger.info('Service Reconnection Manager iniciado');
+  
   // Crear ventana principal (cargar UI primero para mejor UX)
   createWindow();
   
   // Cargar servidores en segundo plano (lazy loading mejorado)
   // Solo verificar si están corriendo, no iniciar automáticamente
   startDedicatedServers(true).then(async ({ ollamaRunning, groqRunning }) => {
-    // Si no están corriendo, cargarlos bajo demanda cuando se necesiten
-    if (!ollamaRunning || !groqRunning) {
-      logger.info('Servidores dedicados se cargarán bajo demanda');
+    // Si no están corriendo, intentar conectar con reconexión automática
+    if (!ollamaRunning) {
+      logger.info('Ollama MCP Server no está corriendo, intentando conectar...');
+      await serviceReconnectionManager.connectService('ollama-mcp-server');
+    }
+    if (!groqRunning) {
+      logger.info('Groq API Server no está corriendo, intentando conectar...');
+      await serviceReconnectionManager.connectService('groq-api-server');
     }
   }).catch(error => {
     logger.warn('Error verificando servidores dedicados', { error: error.message });
@@ -1872,6 +1947,10 @@ app.on('before-quit', () => {
   
   // Detener health aggregator
   globalHealthAggregator.stop();
+  
+  // Detener service reconnection manager
+  const serviceReconnectionManager = getServiceReconnectionManager();
+  serviceReconnectionManager.cleanup();
   
   // Cerrar service registry
   globalServiceRegistry.shutdown();

@@ -6,11 +6,28 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
+    "dev:watch": "nodemon --watch src --exec \"electron . --dev\" --ext js,html,css,json",
+    "dev:full": "concurrently \"npm run dev:watch\" \"npm run servers\"",
     "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "build:all": "electron-builder --win --mac --linux",
+    "clean": "rimraf dist out build .electron-cache",
+    "clean:all": "npm run clean && rimraf node_modules",
+    "lint": "eslint src/**/*.js --fix",
+    "lint:check": "eslint src/**/*.js",
+    "format": "prettier --write \"src/**/*.{js,json,html,css,md}\"",
+    "format:check": "prettier --check \"src/**/*.{js,json,html,css,md}\"",
     "mcp": "node src/mcp/mcp-universal.js",
     "mcp:ollama": "node src/mcp/ollama-mcp-server.js",
     "mcp:groq": "node src/mcp/groq-api-server.js",
-    "servers": "concurrently \"npm run mcp:ollama\" \"npm run mcp:groq\" \"npm run mcp\""
+    "servers": "concurrently \"npm run mcp:ollama\" \"npm run mcp:groq\" \"npm run mcp\"",
+    "servers:watch": "concurrently \"nodemon --watch src/mcp --exec \\\"npm run mcp:ollama\\\"\" \"nodemon --watch src/mcp --exec \\\"npm run mcp:groq\\\"\" \"nodemon --watch src/mcp --exec \\\"npm run mcp\\\"\"",
+    "prebuild": "npm run lint:check && npm run format:check",
+    "postinstall": "electron-builder install-app-deps",
+    "precommit": "npm run lint:check && npm run format:check",
+    "prepare": "husky"
   },
   "keywords": [
     "qwen",
@@ -34,6 +51,13 @@
     "yamljs": "^0.3.0"
   },
   "devDependencies": {
-    "electron-builder": "^24.9.1"
+    "electron-builder": "^24.9.1",
+    "concurrently": "^8.2.2",
+    "nodemon": "^3.0.3",
+    "rimraf": "^5.0.5",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "husky": "^9.0.11",
+    "lint-staged": "^15.2.2"
   }
 }

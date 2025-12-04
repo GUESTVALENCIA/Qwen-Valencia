@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+out/
+.electron-cache/
+*.min.js
+*.min.css
+package-lock.json
+*.log
+*.md
+!README.md
+# Archivo con problemas de encoding (caracteres especiales)
+src/app/renderer/components/app.js
+

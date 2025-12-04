@@ -1,0 +1,21 @@
+{
+  "watch": [
+    "src"
+  ],
+  "ext": "js,json,html,css",
+  "ignore": [
+    "node_modules",
+    "dist",
+    "build",
+    "out",
+    ".electron-cache",
+    "*.log"
+  ],
+  "exec": "electron . --dev",
+  "delay": 1000,
+  "verbose": true,
+  "env": {
+    "NODE_ENV": "development"
+  }
+}
+

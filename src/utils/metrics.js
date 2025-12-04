@@ -125,6 +125,38 @@ class MetricsCollector {
   }
 
   /**
+   * Registra métricas de requests HTTP
+   * @param {string} method - Método HTTP (GET, POST, etc.)
+   * @param {string} path - Ruta del request
+   * @param {number} statusCode - Código de estado HTTP
+   * @param {number} duration - Duración del request en ms
+   */
+  recordRequest(method, path, statusCode, duration) {
+    this.increment('http_requests_total', {
+      method,
+      path: this.normalizePath(path),
+      status: statusCode
+    });
+    this.observe('http_request_duration_ms', {
+      method,
+      path: this.normalizePath(path)
+    }, duration);
+  }
+
+  /**
+   * Normaliza paths para evitar cardinalidad alta
+   * Convierte IDs numéricos y UUID a /:id
+   * @param {string} path - Path a normalizar
+   * @returns {string} Path normalizado
+   */
+  normalizePath(path) {
+    // Normalizar paths para evitar cardinalidad alta
+    return path
+      .replace(/\/\d+/g, '/:id')
+      .replace(/\/[a-f0-9-]{36}/gi, '/:id');
+  }
+
+  /**
    * Resetea todas las métricas
    */
   reset() {

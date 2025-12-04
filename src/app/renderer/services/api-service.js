@@ -178,10 +178,13 @@ class APIService {
 
       // Usar error handler centralizado
       if (typeof window !== 'undefined' && window.handleAPIError) {
+        // handleAPIError es async, pero no esperamos su resultado aquí
         window.handleAPIError(error, 'api-service', { 
           method, 
           url, 
           correlationId 
+        }).catch(err => {
+          this.logger.error('Error en handleAPIError', { error: err.message });
         });
       }
 

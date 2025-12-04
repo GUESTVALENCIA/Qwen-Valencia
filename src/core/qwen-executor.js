@@ -17,6 +17,8 @@ const { APIError, isRetryableError, extractErrorInfo } = require('../utils/api-e
 const { circuitBreakerManager } = require('../utils/circuit-breaker');
 const { retry } = require('../utils/retry');
 const { LoggerFactory } = require('../utils/logger');
+const { createValidator, VALIDATION_TYPES } = require('../utils/parameter-validator');
+const { handleError } = require('../utils/unified-error-handler');
 
 /**
  * @typedef {import('../types')} Types
@@ -30,6 +32,7 @@ class QwenExecutor {
     let groqApiKey = config.groqApiKey || process.env.GROQ_API_KEY;
     if (groqApiKey) {
       // Limpiar primero manualmente para asegurar que no hay caracteres ocultos
+      // eslint-disable-next-line no-control-regex
       groqApiKey = groqApiKey.trim().replace(/['"]/g, '').replace(/\s+/g, '').replace(/[\x00-\x1F\x7F-\x9F]/g, '');
       
       const cleaned = APIKeyCleaner.cleanAndValidateGroq(groqApiKey);
@@ -130,10 +133,28 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
 
   /**
    * Llama a Qwen usando Groq API (vía servidor dedicado)
+   * @param {string} text - Texto del mensaje
+   * @param {Array} attachments - Attachments (imágenes) opcionales
+   * @param {string|null} model - Modelo a usar (opcional)
+   * @returns {Promise<string>} Respuesta del modelo
+   * @throws {ValidationError} Si los parámetros son inválidos
    */
   async callGroq(text, attachments = [], model = null) {
+    // Validar parámetros
+    const validator = createValidator();
+    validator
+      .addRule('text', { type: VALIDATION_TYPES.STRING, required: true, minLength: 1 })
+      .addRule('attachments', { type: VALIDATION_TYPES.ARRAY, required: false, default: [] })
+      .addRule('model', { type: VALIDATION_TYPES.STRING, required: false });
+    
+    const validated = validator.validate({ text, attachments, model });
+    
+    // Usar valores validados
+    const textToUse = validated.text;
+    const attachmentsToUse = validated.attachments || [];
+    
     // Validar que tenemos un modelo
-    let modelToUse = model || this.config.groqModel;
+    let modelToUse = validated.model || this.config.groqModel;
     
     if (!modelToUse) {
       // Modelo por defecto Qwen en Groq
@@ -148,7 +169,7 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
       },
       {
         role: 'user',
-        content: text
+        content: textToUse
       }
     ];
 
@@ -201,6 +222,7 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
           const cleanApiKey = cleaned.cleaned;
           
           // Validar que no tenga caracteres inválidos para headers
+          // eslint-disable-next-line no-control-regex
           if (/[\r\n\t\x00-\x1F\x7F-\x9F]/.test(cleanApiKey)) {
             throw APIError.invalidAPIKey({ 
               reason: 'Caracteres inválidos en API key',
@@ -232,11 +254,29 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
       }
     } catch (error) {
       const errorInfo = extractErrorInfo(error);
-      throw APIError.fromHTTPStatus(
+      const apiError = APIError.fromHTTPStatus(
         errorInfo.statusCode,
         errorInfo.message,
         { ...errorInfo.details, source: 'qwen-executor', originalError: error.message }
       );
+      
+      // Usar error handler unificado si está disponible
+      if (typeof require !== 'undefined') {
+        try {
+          const { handleError } = require('../utils/unified-error-handler');
+          handleError(apiError, {
+            source: 'qwen-executor.callGroq',
+            type: 'api',
+            severity: apiError.statusCode >= 500 ? 'high' : 'medium',
+            metadata: { model: modelToUse, hasAttachments: attachmentsToUse.length > 0 }
+          });
+        } catch (e) {
+          // Si unified-error-handler no está disponible, solo loggear
+          this.logger.error('Error en callGroq', { error: errorInfo.message });
+        }
+      }
+      
+      throw apiError;
     }
   }
 
@@ -263,10 +303,26 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
    * @param {Function|null} onChunk - Callback para chunks de streaming
    * @param {Types.ModelId|null} model - Modelo a usar (opcional)
    * @returns {Promise<string>} Respuesta del modelo
+   * @throws {ValidationError} Si los parámetros son inválidos
    */
   async callOllama(text, attachments = [], onChunk = null, model = null) {
+    // Validar parámetros
+    const validator = createValidator();
+    validator
+      .addRule('text', { type: VALIDATION_TYPES.STRING, required: true, minLength: 1 })
+      .addRule('attachments', { type: VALIDATION_TYPES.ARRAY, required: false, default: [] })
+      .addRule('onChunk', { type: VALIDATION_TYPES.FUNCTION, required: false })
+      .addRule('model', { type: VALIDATION_TYPES.STRING, required: false });
+    
+    const validated = validator.validate({ text, attachments, onChunk, model });
+    
+    // Usar valores validados
+    const textToUse = validated.text;
+    const attachmentsToUse = validated.attachments || [];
+    const onChunkToUse = validated.onChunk;
+    
     // Validar que tenemos un modelo
-    let modelToUse = model || this.config.ollamaModel;
+    let modelToUse = validated.model || this.config.ollamaModel;
     
     if (!modelToUse) {
       // Modelo por defecto si no hay ninguno
@@ -307,7 +363,7 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
               },
               {
                 role: 'user',
-                content: text
+                content: textToUse
               }
             ],
             options: {
@@ -374,7 +430,7 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
               },
               {
                 role: 'user',
-                content: text
+                content: textToUse
               }
             ],
             options: {
@@ -394,24 +450,44 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
         }
       }
     } catch (error) {
-      // Si ya es APIError, re-lanzarlo
+      // Si ya es APIError, usar error handler y re-lanzarlo
       if (error instanceof APIError) {
+        handleError(error, {
+          source: 'qwen-executor.callOllama',
+          type: 'api',
+          severity: error.statusCode >= 500 ? 'high' : 'medium',
+          metadata: { model: modelToUse, hasAttachments: attachmentsToUse.length > 0 }
+        });
         throw error;
       }
       
       // Detectar errores 404 específicamente
       if (error.response?.status === 404 || error.message?.includes('404')) {
-        throw APIError.modelNotFound(modelToUse, {
+        const apiError = APIError.modelNotFound(modelToUse, {
           suggestion: `Ejecuta: ollama pull ${modelToUse}`,
           originalError: error.message
         });
+        handleError(apiError, {
+          source: 'qwen-executor.callOllama',
+          type: 'api',
+          severity: 'medium',
+          metadata: { model: modelToUse, errorType: 'model_not_found' }
+        });
+        throw apiError;
       }
       
       // Otros errores
-      throw APIError.ollamaNotAvailable({
+      const apiError = APIError.ollamaNotAvailable({
         model: modelToUse,
         originalError: error.message
       });
+      handleError(apiError, {
+        source: 'qwen-executor.callOllama',
+        type: 'api',
+        severity: 'high',
+        metadata: { model: modelToUse, errorType: 'ollama_not_available' }
+      });
+      throw apiError;
     }
   }
 
@@ -444,8 +520,23 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
    * Optimizado para respuestas rápidas cuando useAPI está activado
    * Qwen puede trabajar LOCAL (Ollama) y ONLINE (Groq API)
    * Implementa fallback inteligente con circuit breaker
+   * @param {string} text - Texto del mensaje
+   * @param {Array} attachments - Attachments (imágenes) opcionales
+   * @param {string|null} model - Modelo a usar (opcional)
+   * @returns {Promise<string>} Respuesta del modelo
+   * @throws {ValidationError} Si los parámetros son inválidos
+   * @throws {APIError} Si hay un error en la API
    */
   async execute(text, attachments = [], model = null) {
+    // Validar parámetros
+    const validator = createValidator();
+    validator
+      .addRule('text', { type: VALIDATION_TYPES.STRING, required: true, minLength: 1 })
+      .addRule('attachments', { type: VALIDATION_TYPES.ARRAY, required: false, default: [] })
+      .addRule('model', { type: VALIDATION_TYPES.STRING, required: false });
+    
+    const validated = validator.validate({ text, attachments, model });
+    
     const groqBreaker = circuitBreakerManager.getBreaker('groq-qwen', {
       failureThreshold: 3,
       timeout: 60000
@@ -469,7 +560,7 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
             const startTime = Date.now();
             const response = await groqBreaker.execute(
               () => retry(
-                () => this.callGroq(text, attachments, model),
+                () => this.callGroq(validated.text, validated.attachments, validated.model),
                 {
                   maxRetries: 2,
                   onRetry: (error, attempt, delay) => {
@@ -513,7 +604,7 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
           const startTime = Date.now();
           const response = await ollamaBreaker.execute(
             () => retry(
-              () => this.callOllama(text, attachments, null, model),
+              () => this.callOllama(validated.text, validated.attachments, null, validated.model),
               {
                 maxRetries: 2,
                 onRetry: (error, attempt, delay) => {
@@ -531,16 +622,34 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
           
           // Si ambos fallaron, lanzar error con información de ambos
           if (groqError) {
-            throw APIError.allProvidersFailed(
+            const apiError = APIError.allProvidersFailed(
               [groqError, error],
               {
                 groqError: extractErrorInfo(groqError),
                 ollamaError: errorInfo
               }
             );
+            handleError(apiError, {
+              source: 'qwen-executor.execute',
+              type: 'api',
+              severity: 'critical',
+              metadata: { 
+                groqError: extractErrorInfo(groqError).message,
+                ollamaError: errorInfo.message,
+                mode: this.config.mode
+              }
+            });
+            throw apiError;
           }
           
-          throw APIError.ollamaNotAvailable(errorInfo.details);
+          const apiError = APIError.ollamaNotAvailable(errorInfo.details);
+          handleError(apiError, {
+            source: 'qwen-executor.execute',
+            type: 'api',
+            severity: 'high',
+            metadata: { mode: this.config.mode, hasGroqKey: !!this.config.groqApiKey }
+          });
+          throw apiError;
         }
       } else if (groqError) {
         // Si no hay Ollama configurado y Groq falló, lanzar error
@@ -557,17 +666,38 @@ RECUERDA: ERES EJECUTORA, NO DESCRIPTIVA. EJECUTA REALMENTE.`;
         );
       }
     } catch (error) {
-      // Si ya es APIError, re-lanzarlo
+      // Si ya es APIError, usar error handler y re-lanzarlo
       if (error instanceof APIError) {
+        handleError(error, {
+          source: 'qwen-executor.execute',
+          type: 'api',
+          severity: error.statusCode >= 500 ? 'high' : 'medium',
+          metadata: { 
+            mode: this.config.mode,
+            hasGroqKey: !!this.config.groqApiKey,
+            hasOllamaUrl: !!this.config.ollamaUrl
+          }
+        });
         throw error;
       }
       
       // Convertir a APIError
-      throw APIError.fromHTTPStatus(
+      const apiError = APIError.fromHTTPStatus(
         500,
         `Error ejecutando Qwen: ${error.message}`,
         { originalError: error.message }
       );
+      handleError(apiError, {
+        source: 'qwen-executor.execute',
+        type: 'api',
+        severity: 'high',
+        metadata: { 
+          mode: this.config.mode,
+          hasGroqKey: !!this.config.groqApiKey,
+          hasOllamaUrl: !!this.config.ollamaUrl
+        }
+      });
+      throw apiError;
     }
   }
 
