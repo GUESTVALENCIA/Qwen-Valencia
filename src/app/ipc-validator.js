@@ -44,7 +44,9 @@ const ALLOWED_CHANNELS = {
   ],
 
   // Canales de ventana (validación básica)
-  window: ['window-minimize', 'window-maximize', 'window-close', 'create-floating-avatar-window'],
+  // NOTA: Estos canales usan ipcMain.on (no ipcMain.handle) y no pasan por validateIPC
+  // Por lo tanto, no necesitan rate limiting
+  window: ['window-minimize', 'window-maximize', 'window-close'],
 
   // Canales de audio/TTS (validación media)
   media: ['generate-speech', 'cartesia-tts', 'transcribe-audio', 'deepgram-transcribe'],
@@ -56,7 +58,8 @@ const ALLOWED_CHANNELS = {
   terminal: ['create-terminal', 'get-available-terminals'],
 
   // Canales de multi-ventana (validación básica)
-  multiWindow: ['create-window', 'get-windows'],
+  // Incluye create-floating-avatar-window porque usa ipcMain.handle con validateIPC
+  multiWindow: ['create-window', 'get-windows', 'create-floating-avatar-window'],
 
   // Canales de lazy loading (validación media)
   lazy: ['load-lazy-module']
@@ -69,7 +72,7 @@ const RATE_LIMIT_MAX = {
   read: 100,
   write: 30,
   control: 20,
-  window: 10,
+  // window: removido - los canales window usan ipcMain.on y no pasan por validateIPC
   multiWindow: 10,
   media: 15,
   lab: 5,
