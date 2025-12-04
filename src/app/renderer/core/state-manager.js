@@ -326,7 +326,9 @@ class StateManager {
    */
   reset(initialState = {}) {
     const previousState = { ...this.state };
-    this.state = { ...initialState };
+    // FIX: Congelar el estado reseteado para mantener la inmutabilidad
+    const newState = { ...initialState };
+    this.state = this.enableImmutable ? this.deepFreeze(newState) : newState;
     this.notifyObservers('*', this.state, previousState);
     this.saveToStorage();
     this.logger.info('State reset');
