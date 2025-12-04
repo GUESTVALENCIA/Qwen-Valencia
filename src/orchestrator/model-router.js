@@ -82,6 +82,14 @@ class ModelRouter {
    */
   async route(text, modality = 'text', attachments = [], options = {}) {
     try {
+      // Verificar si se solicita Sandra IA
+      const modelToUse = options.model || null;
+      
+      if (modelToUse === 'sandra-ia-8.0' || modelToUse === 'sandra' || options.provider === 'sandra') {
+        // Enrutar a Sandra IA MCP Server
+        return await this.routeToSandraIA(text, modality, attachments, options);
+      }
+      
       // Detectar tipo de tarea
       const taskType = this.detectTaskType(text, modality, attachments);
       
@@ -92,8 +100,6 @@ class ModelRouter {
       const useAPI = options.useAPI !== false; // Por defecto true
       let finalMode = useAPI ? 'groq' : 'ollama';
       
-      // Si hay modelo seleccionado, determinar modo desde el provider
-      const modelToUse = options.model || null;
       let parsedModel = null;
       
       if (modelToUse) {
@@ -220,6 +226,64 @@ class ModelRouter {
    */
   async listFiles(dirPath) {
     return await this.qwen.listFiles(dirPath);
+  }
+
+  /**
+   * Enruta mensaje a Sandra IA 8.0
+   */
+  async routeToSandraIA(text, modality = 'text', attachments = [], options = {}) {
+    try {
+      const axios = require('axios');
+      
+      // Llamar a Sandra IA MCP Server
+      const response = await axios.post('http://localhost:6004/route-message', {
+        text,
+        attachments,
+        modality,
+        options
+      }, {
+        timeout: 60000 // 60 segundos timeout para orquestación compleja
+      });
+
+      if (response.data && response.data.success) {
+        return {
+          success: true,
+          model: 'sandra-ia-8.0',
+          provider: 'sandra',
+          taskType: 'orchestrated',
+          response: response.data.response || response.data.content,
+          modality,
+          sources: response.data.sources,
+          usage: response.data.usage
+        };
+      } else {
+        throw new Error(response.data?.error || 'Error en Sandra IA');
+      }
+    } catch (error) {
+      console.error('❌ Error enrutando a Sandra IA:', error);
+      
+      // Fallback a Qwen si Sandra IA falla
+      console.log('🔄 Fallback a Qwen debido a error en Sandra IA...');
+      try {
+        const fallbackResponse = await this.qwen.execute(text, attachments);
+        return {
+          success: true,
+          model: 'qwen',
+          provider: 'fallback',
+          taskType: 'fallback',
+          response: fallbackResponse,
+          modality,
+          warning: 'Sandra IA no disponible, usando Qwen como fallback'
+        };
+      } catch (fallbackError) {
+        return {
+          success: false,
+          error: error.message,
+          fallbackError: fallbackError.message,
+          allProvidersFailed: true
+        };
+      }
+    }
   }
 }
 

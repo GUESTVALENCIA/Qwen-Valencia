@@ -1,17 +1,34 @@
-# Dependencies
-node_modules/
-package-lock.json
+# Logs
+.sandra-logs/
+.sandra-8.0-logs/
+.orchestrator-logs/
+*.log
 
-# Build outputs
-dist/
-build/
-out/
-
-# Environment files
+# Environment variables
 .env
 .env.local
-.env.pro
 qwen-valencia.env
+
+# Node modules (si se agregan dependencias)
+node_modules/
+
+# Configuración sensible
+config/tokens.json
+config/*-secret.json
+
+# Modelos locales
+models/local/
+*.gguf
+
+# Métricas y reportes temporales
+.sandra-metrics/
+*.metrics.json
+
+# Archivos temporales
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
 
 # IDE
 .vscode/
@@ -20,35 +37,6 @@ qwen-valencia.env
 *.swo
 *~
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-logs/
-
-# Temporary files
-tmp/
-temp/
-*.tmp
-
-# Electron
-.electron-cache/
-.electron-builder-cache/
-
-# Backup files (NO PERMITIR BACKUPS EN EL REPO)
-*.backup
-*.bak
-*.old
-*~
-
-# Archivos protegidos - NO MODIFICAR
-# Estos archivos están protegidos y no deben ser modificados sin autorización
-# .protected/
-
-# Revisión automática de código
-.code-review-last.txt
-
-# Orquestador de subagentes
-.orchestrator-logs/
+# Build
+dist/
+build/

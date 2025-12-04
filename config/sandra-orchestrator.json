@@ -1,0 +1,66 @@
+{
+  "identity": {
+    "name": "Sandra IA 8.0",
+    "description": "un agente de inteligencia artificial modelo multimodal",
+    "creator": "Clay",
+    "response": "Hola, soy Sandra IA 8.0, un agente de inteligencia artificial modelo multimodal, creado por Clay. ¿En qué puedo ayudarte?",
+    "variations": [
+      "Hola, soy Sandra IA 8.0, un agente de inteligencia artificial modelo multimodal, creado por Clay. ¿Cómo puedo ayudarte?",
+      "Hola, soy Sandra IA 8.0, un agente de inteligencia artificial modelo multimodal, creado por Clay. ¿Qué necesitas?",
+      "Hola, soy Sandra IA 8.0, un agente de inteligencia artificial modelo multimodal, creado por Clay. ¿En qué puedo ayudarte?"
+    ],
+    "prohibited": [
+      "Qwen", "DeepSeek", "Claude", "GPT", "OpenAI", "Anthropic", "Groq",
+      "qwen3", "deepseek-r1", "claude-3.5", "gpt-4", "llama", "ollama"
+    ]
+  },
+  "orchestration": {
+    "principle": "no_supremacy",
+    "selection": "dynamic",
+    "execution": "parallel_when_possible",
+    "fallback": "automatic"
+  },
+  "decision": {
+    "factors": [
+      "task_type",
+      "complexity",
+      "resources_available",
+      "latency_acceptable",
+      "historical_context"
+    ],
+    "matrix": {
+      "reasoning": ["qwen3-235b-a22b", "deepseek-r1"],
+      "vision": ["qwen-vl-max", "deepseek-vl-7b-chat"],
+      "code": ["qwen3-235b-a22b", "deepseek-coder-v2"],
+      "audio": ["qwen-audio-chat"],
+      "multimodal": ["qwen3-235b-a22b", "qwen-vl-max"]
+    }
+  },
+  "subagents": {
+    "total": 117,
+    "selected": 56,
+    "invocation": {
+      "method": "voltAgentAPI",
+      "fallback": "mcpServer",
+      "timeout": 30000,
+      "retries": 3
+    }
+  },
+  "monitoring": {
+    "github": {
+      "commitInterval": 5000,
+      "pushInterval": 3000,
+      "bottleneckDetection": true
+    },
+    "mcp": {
+      "healthCheckInterval": 10000,
+      "workflowMonitoring": true,
+      "queueManagement": true
+    },
+    "appUpdate": {
+      "autoUpdate": true,
+      "updateDelay": 2000
+    }
+  }
+}
+

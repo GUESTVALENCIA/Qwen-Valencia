@@ -1,0 +1,104 @@
+{
+  "online": {
+    "reasoning": {
+      "qwen": {
+        "name": "Qwen3-MAX",
+        "model": "qwen3-235b-a22b",
+        "provider": "groq",
+        "apiKey": "${GROQ_API_KEY}",
+        "baseUrl": "https://api.groq.com/openai/v1",
+        "strengths": ["razonamiento lógico", "matemáticas avanzadas", "multimodal", "ejecución de código"],
+        "maxTokens": 8192,
+        "temperature": 0.7,
+        "enabled": true
+      },
+      "deepseek": {
+        "name": "DeepSeek-R1",
+        "model": "deepseek-r1",
+        "provider": "groq",
+        "apiKey": "${GROQ_API_KEY}",
+        "baseUrl": "https://api.groq.com/openai/v1",
+        "strengths": ["código complejo", "razonamiento causal", "sistemas distribuidos"],
+        "maxTokens": 8192,
+        "temperature": 0.7,
+        "enabled": true
+      }
+    },
+    "vision": {
+      "qwen": {
+        "name": "Qwen-VL-MAX",
+        "model": "qwen-vl-max",
+        "provider": "groq",
+        "apiKey": "${GROQ_API_KEY}",
+        "baseUrl": "https://api.groq.com/openai/v1",
+        "strengths": ["OCR preciso", "razonamiento visual", "análisis de gráficos"],
+        "maxTokens": 16384,
+        "temperature": 0.5,
+        "enabled": true
+      },
+      "deepseek": {
+        "name": "DeepSeek-VL",
+        "model": "deepseek-vl-7b-chat",
+        "provider": "groq",
+        "apiKey": "${GROQ_API_KEY}",
+        "baseUrl": "https://api.groq.com/openai/v1",
+        "strengths": ["detección de objetos", "escenas complejas"],
+        "maxTokens": 8192,
+        "temperature": 0.6,
+        "enabled": true
+      }
+    },
+    "code": {
+      "qwen": {
+        "name": "Qwen3-MAX",
+        "model": "qwen3-235b-a22b",
+        "provider": "groq",
+        "apiKey": "${GROQ_API_KEY}",
+        "baseUrl": "https://api.groq.com/openai/v1",
+        "strengths": ["diseño lógico", "arquitectura de código"],
+        "maxTokens": 16384,
+        "temperature": 0.3,
+        "enabled": true
+      },
+      "deepseek": {
+        "name": "DeepSeek-Coder-V2",
+        "model": "deepseek-coder-v2",
+        "provider": "groq",
+        "apiKey": "${GROQ_API_KEY}",
+        "baseUrl": "https://api.groq.com/openai/v1",
+        "strengths": ["generación segura", "refactorización", "tests unitarios"],
+        "maxTokens": 16384,
+        "temperature": 0.2,
+        "enabled": true
+      }
+    },
+    "audio": {
+      "qwen": {
+        "name": "Qwen-Audio",
+        "model": "qwen-audio-chat",
+        "provider": "groq",
+        "apiKey": "${GROQ_API_KEY}",
+        "baseUrl": "https://api.groq.com/openai/v1",
+        "strengths": ["STT multilingüe", "TTS natural", "análisis emocional"],
+        "maxTokens": 4096,
+        "temperature": 0.7,
+        "enabled": true
+      }
+    }
+  },
+  "local": {
+    "orchestrator": {
+      "name": "Qwen2.5-1.5B-Instruct",
+      "path": "./models/local/qwen2.5-1.5b-instruct-q4_K_M.gguf",
+      "engine": "llama.cpp",
+      "params": {
+        "n_ctx": 4096,
+        "n_gpu_layers": 0,
+        "n_threads": 4
+      },
+      "strengths": ["orquestación", "control de subagentes", "comunicación con app"],
+      "enabled": true
+    }
+  }
+}
+

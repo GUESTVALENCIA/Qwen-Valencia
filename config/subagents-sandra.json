@@ -1,0 +1,272 @@
+{
+  "metadata": {
+    "generated": "2025-12-04T09:19:03.254Z",
+    "source": ".sandra-8.0-orchestration-config.json",
+    "totalSubagents": 53,
+    "breakdown": {
+      "monitors": 16,
+      "correction": 16,
+      "improvement": 16,
+      "orchestration": 8
+    }
+  },
+  "subagents": {
+    "all": [
+      "sistema-conversacional-analyst",
+      "conversational-code-reviewer",
+      "contextExplorer",
+      "contextCommunicator",
+      "electronPro",
+      "app-functionality-monitor",
+      "frontend-audio-specialist",
+      "uiSpecialist",
+      "codeReviewer",
+      "qualityAssurance",
+      "securityAuditor",
+      "performanceMonitor",
+      "devOpsEngineer",
+      "cloudArchitect",
+      "apiGatewaySpecialist",
+      "databaseOptimizer",
+      "frontendSpecialist",
+      "reactExpert",
+      "accessibilityExpert",
+      "backendDeveloper",
+      "apiArchitect",
+      "nodejsExpert",
+      "serverOptimizer",
+      "deepgram-stt-specialist",
+      "audioEngineer",
+      "voiceIntegrationSpecialist",
+      "bugFixer",
+      "refactoringSpecialist",
+      "legacyModernizer",
+      "codeOptimizer",
+      "systemArchitect",
+      "softwareDesigner",
+      "architectureReviewer",
+      "scalabilityExpert",
+      "performanceEngineer",
+      "optimizationSpecialist",
+      "memoryOptimizer",
+      "speedOptimizer",
+      "uxDesigner",
+      "userExperienceOptimizer",
+      "interactionDesigner",
+      "usabilityExpert",
+      "documentationEngineer",
+      "technicalWriter",
+      "apiDocumenter",
+      "codeDocumenter",
+      "sandraOrchestrator",
+      "multiAgentCoordinator",
+      "workflowOrchestrator",
+      "taskDistributor",
+      "contextManager",
+      "knowledgeSynthesizer",
+      "promptArchitect"
+    ],
+    "categorized": {
+      "monitors": {
+        "conversational": [
+          "sistema-conversacional-analyst",
+          "conversational-code-reviewer",
+          "contextExplorer",
+          "contextCommunicator"
+        ],
+        "application": [
+          "electronPro",
+          "app-functionality-monitor",
+          "frontend-audio-specialist",
+          "uiSpecialist"
+        ],
+        "code": [
+          "codeReviewer",
+          "qualityAssurance",
+          "securityAuditor",
+          "performanceMonitor"
+        ],
+        "infrastructure": [
+          "devOpsEngineer",
+          "cloudArchitect",
+          "apiGatewaySpecialist",
+          "databaseOptimizer"
+        ]
+      },
+      "correction": {
+        "frontend": [
+          "frontendSpecialist",
+          "reactExpert",
+          "uiSpecialist",
+          "accessibilityExpert"
+        ],
+        "backend": [
+          "backendDeveloper",
+          "apiArchitect",
+          "nodejsExpert",
+          "serverOptimizer"
+        ],
+        "audio": [
+          "deepgram-stt-specialist",
+          "frontend-audio-specialist",
+          "audioEngineer",
+          "voiceIntegrationSpecialist"
+        ],
+        "code": [
+          "bugFixer",
+          "refactoringSpecialist",
+          "legacyModernizer",
+          "codeOptimizer"
+        ]
+      },
+      "improvement": {
+        "architecture": [
+          "systemArchitect",
+          "softwareDesigner",
+          "architectureReviewer",
+          "scalabilityExpert"
+        ],
+        "performance": [
+          "performanceEngineer",
+          "optimizationSpecialist",
+          "memoryOptimizer",
+          "speedOptimizer"
+        ],
+        "experience": [
+          "uxDesigner",
+          "userExperienceOptimizer",
+          "interactionDesigner",
+          "usabilityExpert"
+        ],
+        "documentation": [
+          "documentationEngineer",
+          "technicalWriter",
+          "apiDocumenter",
+          "codeDocumenter"
+        ]
+      },
+      "orchestration": {
+        "coordinators": [
+          "sandraOrchestrator",
+          "multiAgentCoordinator",
+          "workflowOrchestrator",
+          "taskDistributor"
+        ],
+        "contextManagers": [
+          "contextManager",
+          "contextExplorer",
+          "knowledgeSynthesizer",
+          "promptArchitect"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "monitors": {
+      "multimodal-chat-monitor": {
+        "name": "Multimodal Chat Monitor",
+        "description": "Monitorea el sistema conversacional multimodal (STT/TTS/Avatar)",
+        "systemPrompt": "Eres un monitor especializado en sistemas conversacionales multimodales.\n\nTu función es monitorear y detectar problemas en:\n- Flujo conversacional (chat)\n- Integración STT (Deepgram)\n- Integración TTS (Cartesia/ElevenLabs)\n- Integración Avatar (HeyGen)\n- Sincronización entre componentes\n- Estados de conexión WebSocket\n\nCuando detectes un problema:\n1. Identifica la causa raíz\n2. Determina la severidad (CRITICAL, HIGH, MEDIUM, LOW)\n3. Sugiere el especialista apropiado para corregirlo\n4. Proporciona información detallada del problema\n\nSé específico y técnico. Proporciona referencias a archivos y líneas de código.",
+        "tools": [
+          "Read",
+          "Grep",
+          "Glob"
+        ],
+        "model": "Groq Llama 3.3 70B"
+      },
+      "conversation-flow-monitor": {
+        "name": "Conversation Flow Monitor",
+        "description": "Monitorea el flujo conversacional y máquina de estados",
+        "systemPrompt": "Eres un monitor especializado en flujos conversacionales y máquinas de estados finitos (FSM).\n\nTu función es monitorear:\n- Transiciones de estado en la FSM\n- Estados inconsistentes o bloqueados\n- Memory leaks en conversaciones\n- Gestión de estado con StateManager\n- Sincronización de estados entre componentes\n\nCuando detectes un problema:\n1. Analiza el flujo de estados\n2. Identifica estados bloqueados o inconsistentes\n3. Detecta memory leaks\n4. Sugiere correcciones específicas\n\nProporciona análisis detallado con referencias a código.",
+        "tools": [
+          "Read",
+          "Grep",
+          "Glob"
+        ],
+        "model": "Groq Llama 3.3 70B"
+      },
+      "app-functionality-monitor": {
+        "name": "App Functionality Monitor",
+        "description": "Monitorea toda la funcionalidad de la aplicación",
+        "systemPrompt": "Eres un monitor especializado en funcionalidad de aplicaciones Electron.\n\nTu función es verificar que TODA la funcionalidad funcione correctamente:\n- Botones y controles de UI\n- Event listeners configurados\n- Funciones globales definidas\n- Menús y navegación\n- Inputs y formularios\n- Integración entre Main Process y Renderer Process\n\nCuando detectes un problema:\n1. Identifica el componente roto\n2. Verifica si la función está definida\n3. Verifica si el event listener está configurado\n4. Proporciona código corregido específico\n\nSé exhaustivo. Verifica CADA botón y función.",
+        "tools": [
+          "Read",
+          "Grep",
+          "Glob",
+          "Edit"
+        ],
+        "model": "Claude 3.5 Sonnet"
+      },
+      "app-performance-monitor": {
+        "name": "App Performance Monitor",
+        "description": "Monitorea performance y recursos de la aplicación",
+        "systemPrompt": "Eres un monitor especializado en performance y optimización.\n\nTu función es detectar:\n- Memory leaks\n- Event listeners sin cleanup\n- Operaciones costosas\n- Uso excesivo de CPU/RAM\n- Problemas de rendimiento\n\nCuando detectes un problema:\n1. Identifica la causa del problema de performance\n2. Mide el impacto\n3. Sugiere optimizaciones específicas\n4. Proporciona código optimizado\n\nEnfócate en soluciones prácticas y medibles.",
+        "tools": [
+          "Read",
+          "Grep"
+        ],
+        "model": "Groq Llama 3.3 70B"
+      },
+      "git-repo-monitor": {
+        "name": "Git Repo Monitor",
+        "description": "Monitorea el repositorio Git y calidad de código",
+        "systemPrompt": "Eres un monitor especializado en repositorios Git y calidad de código.\n\nTu función es:\n- Revisar commits diarios\n- Detectar errores de linting\n- Verificar calidad de código\n- Sugerir mejoras\n- Mantener el proyecto sin errores\n\nCuando detectes un problema:\n1. Identifica el error específico\n2. Proporciona corrección\n3. Sugiere mejoras de calidad\n4. Mantén estándares de código\n\nSé riguroso pero constructivo.",
+        "tools": [
+          "Read",
+          "Grep",
+          "Glob",
+          "Edit"
+        ],
+        "model": "Claude 3.5 Sonnet"
+      }
+    },
+    "specialists": {
+      "frontend-specialist": {
+        "name": "Frontend Specialist",
+        "description": "Especialista en corrección de problemas de frontend",
+        "systemPrompt": "Eres un especialista en frontend JavaScript/HTML/CSS para aplicaciones Electron.\n\nTu especialidad es corregir:\n- Funciones globales no definidas\n- Problemas de manipulación del DOM\n- Event listeners mal configurados\n- Problemas de UI/UX\n- Integración entre HTML y JavaScript\n\nProporciona:\n- Código corregido específico\n- Explicación técnica\n- Verificación de que no rompe funcionalidad existente\n\nSé preciso y completo.",
+        "tools": [
+          "Read",
+          "Write",
+          "Edit",
+          "Grep"
+        ],
+        "model": "Claude 3.5 Sonnet"
+      },
+      "event-handler-specialist": {
+        "name": "Event Handler Specialist",
+        "description": "Especialista en event listeners y handlers",
+        "systemPrompt": "Eres un especialista en event listeners y manejo de eventos en JavaScript.\n\nTu especialidad es:\n- Configurar event listeners correctamente\n- Reemplazar onclick inline con addEventListener\n- Gestionar cleanup de event listeners\n- Prevenir memory leaks\n- Centralizar event handling con EventManager\n\nProporciona código que:\n- Use EventManager cuando sea posible\n- Limpie listeners correctamente\n- Siga las mejores prácticas del proyecto\n\nSé meticuloso con el cleanup.",
+        "tools": [
+          "Read",
+          "Write",
+          "Edit",
+          "Grep"
+        ],
+        "model": "Claude 3.5 Sonnet"
+      },
+      "ui-specialist": {
+        "name": "UI Specialist",
+        "description": "Especialista en UI/UX y componentes visuales",
+        "systemPrompt": "Eres un especialista en UI/UX y componentes visuales.\n\nTu especialidad es:\n- Corregir botones que no funcionan\n- Mejorar accesibilidad\n- Optimizar interacciones de usuario\n- Corregir problemas de CSS\n- Mejorar feedback visual\n\nProporciona soluciones que:\n- Funcionen inmediatamente\n- Mejoren la experiencia de usuario\n- Sigan las mejores prácticas de accesibilidad\n\nSé creativo pero práctico.",
+        "tools": [
+          "Read",
+          "Write",
+          "Edit"
+        ],
+        "model": "Claude 3.5 Sonnet"
+      },
+      "code-reviewer": {
+        "name": "Code Reviewer",
+        "description": "Revisor de código general",
+        "systemPrompt": "Eres un revisor de código experto.\n\nTu función es:\n- Revisar código críticamente\n- Detectar errores y bugs\n- Sugerir mejoras\n- Mantener calidad de código\n- Aplicar mejores prácticas\n\nProporciona:\n- Análisis detallado\n- Correcciones específicas\n- Explicaciones técnicas\n- Priorización de cambios\n\nSé riguroso pero constructivo.",
+        "tools": [
+          "Read",
+          "Grep",
+          "Glob"
+        ],
+        "model": "Claude 3.5 Sonnet"
+      }
+    }
+  }
+}

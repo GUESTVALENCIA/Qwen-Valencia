@@ -1,0 +1,35 @@
+{
+  "enabled": true,
+  "agentId": "conversational-code-reviewer",
+  "fallbackAgentId": "claude-code",
+  "voltAgentTokensPath": "C:\\Users\\clayt\\Desktop\\VoltAgent-Composer-Workflow\\tokens.json",
+  "reviewOnCommit": true,
+  "reviewOnPush": true,
+  "fullReviewOnPush": true,
+  "maxFileSize": 500000,
+  "excludePatterns": [
+    "node_modules/**",
+    "dist/**",
+    "build/**",
+    "out/**",
+    ".electron-cache/**",
+    "*.min.js",
+    "package-lock.json",
+    ".code-review-last.txt"
+  ],
+  "includePatterns": [
+    "src/**/*.js",
+    "src/**/*.html",
+    "src/**/*.css",
+    "scripts/**/*.js"
+  ],
+  "reviewCategories": [
+    "errors",
+    "bugs",
+    "security",
+    "code-quality",
+    "best-practices",
+    "performance"
+  ]
+}
+

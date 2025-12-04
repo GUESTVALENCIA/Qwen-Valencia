@@ -20,6 +20,7 @@ const ModelRouter = require('../orchestrator/model-router');
 const MCPUniversal = require('../mcp/mcp-universal');
 const OllamaMCPServer = require('../mcp/ollama-mcp-server');
 const GroqAPIServer = require('../mcp/groq-api-server');
+const SandraIAMCPServer = require('../mcp/sandra-ia-mcp-server');
 const variablesLoader = require('../utils/variables-loader');
 const HeyGenTokenService = require('../services/heygen-token-service');
 const { LoggerFactory } = require('../utils/logger');
@@ -58,6 +59,7 @@ let mcpServer;
 let modelRouter;
 let ollamaMcpServer;
 let groqApiServer;
+let sandraIaMcpServer;
 let apiServer; // Aplicación Express para endpoints de API
 let apiHttpServer; // Servidor HTTP (retornado por listen())
 let heygenTokenService;
@@ -70,6 +72,7 @@ const lazyModules = {
   mcpServer: null,
   ollamaMcpServer: null,
   groqApiServer: null,
+  sandraIaMcpServer: null,
   conversationService: null,
   deepgramService: null
 };
@@ -94,7 +97,8 @@ async function startDedicatedServers(lazy = false) {
   if (lazy) {
     const ollamaRunning = await checkServerHealth('http://localhost:6002/ollama/health');
     const groqRunning = await checkServerHealth('http://localhost:6003/groq/health');
-    return { ollamaRunning, groqRunning };
+    const sandraRunning = await checkServerHealth('http://localhost:6004/health');
+    return { ollamaRunning, groqRunning, sandraRunning };
   }
 
   // Verificar Ollama MCP Server (puerto 6002)
@@ -190,6 +194,54 @@ async function startDedicatedServers(lazy = false) {
         capabilities: ['qwen-models', 'deepseek-models', 'api-keys-rotation']
       },
       tags: ['api', 'groq', 'cloud']
+    });
+  }
+
+  // Verificar Sandra IA MCP Server (puerto 6004)
+  const sandraRunning = await checkServerHealth('http://localhost:6004/health');
+  if (!sandraRunning) {
+    try {
+      logger.info('Iniciando Sandra IA MCP Server');
+      sandraIaMcpServer = new SandraIAMCPServer();
+      await sandraIaMcpServer.start();
+      logger.info('Sandra IA MCP Server iniciado exitosamente');
+
+      // Registrar servicio en service registry
+      globalServiceRegistry.register({
+        name: 'sandra-ia-mcp-server',
+        version: '8.0.0',
+        host: 'localhost',
+        port: 6004,
+        protocol: 'http',
+        healthEndpoint: '/health',
+        metadata: {
+          type: 'mcp-server',
+          provider: 'sandra-ia',
+          capabilities: ['orchestration', 'multimodal', 'subagents']
+        },
+        tags: ['mcp', 'sandra', 'orchestration']
+      });
+    } catch (error) {
+      logger.warn('Sandra IA MCP Server no pudo iniciar', { error: error.message });
+      logger.warn('Sandra IA no estará disponible, pero la aplicación continuará');
+    }
+  } else {
+    logger.info('Sandra IA MCP Server ya está corriendo');
+
+    // Registrar servicio existente
+    globalServiceRegistry.register({
+      name: 'sandra-ia-mcp-server',
+      version: '8.0.0',
+      host: 'localhost',
+      port: 6004,
+      protocol: 'http',
+      healthEndpoint: '/health',
+      metadata: {
+        type: 'mcp-server',
+        provider: 'sandra-ia',
+        capabilities: ['orchestration', 'multimodal', 'subagents']
+      },
+      tags: ['mcp', 'sandra', 'orchestration']
     });
   }
 }

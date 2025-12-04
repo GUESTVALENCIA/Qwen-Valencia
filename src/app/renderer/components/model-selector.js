@@ -172,6 +172,7 @@ class ModelSelector {
         const modelKeys = Object.keys(MODELS_REF).filter(k => k !== 'auto');
         
         // Agrupar por proveedor para mejor organización
+        const systemModels = []; // Sandra IA y QWEN Valencia
         const ollamaModels = [];
         const groqModels = [];
         
@@ -179,7 +180,10 @@ class ModelSelector {
             const model = MODELS_REF[modelId];
             if (!model) return;
             
-            if (model.provider === 'Ollama') {
+            // Sistemas principales (Sandra IA y QWEN Valencia)
+            if (modelId === 'sandra-ia-8.0' || modelId === 'qwen-valencia') {
+                systemModels.push({ id: modelId, model });
+            } else if (model.provider === 'Ollama') {
                 ollamaModels.push({ id: modelId, model });
             } else if (model.provider === 'Groq') {
                 groqModels.push({ id: modelId, model });
@@ -188,6 +192,17 @@ class ModelSelector {
         
         // Preparar items para renderizado (con separadores)
         const items = [];
+        
+        // Sistemas principales primero
+        if (systemModels.length > 0) {
+            items.push({ type: 'header', text: 'Sistemas de IA', key: 'header-systems' });
+            systemModels.forEach(({ id, model }) => {
+                items.push({ type: 'model', id, model, key: id });
+            });
+            if (ollamaModels.length > 0 || groqModels.length > 0) {
+                items.push({ type: 'divider', key: 'divider-systems' });
+            }
+        }
         
         if (ollamaModels.length > 0) {
             items.push({ type: 'header', text: 'Ollama Local', key: 'header-ollama' });

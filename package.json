@@ -1,68 +1,33 @@
 {
-  "name": "qwen-valencia",
-  "version": "1.0.0",
-  "description": "Qwen + DeepSeek Ejecutor Puro - 7 modelos API + 2 locales ligeros - Optimizado para memoria RAM",
-  "main": "src/app/main.js",
+  "name": "sandra-ia-8.0",
+  "version": "8.0.0",
+  "description": "Sistema de orquestación multimodal de inteligencia artificial - Sandra IA 8.0",
+  "main": "core/sandra-core/index.js",
   "scripts": {
-    "start": "electron .",
-    "dev": "electron . --dev",
-    "dev:watch": "nodemon --watch src --exec \"electron . --dev\" --ext js,html,css,json",
-    "dev:full": "concurrently \"npm run dev:watch\" \"npm run servers\"",
-    "build": "electron-builder",
-    "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac",
-    "build:linux": "electron-builder --linux",
-    "build:all": "electron-builder --win --mac --linux",
-    "clean": "rimraf dist out build .electron-cache",
-    "clean:all": "npm run clean && rimraf node_modules",
-    "lint": "eslint src/**/*.js --fix",
-    "lint:check": "eslint src/**/*.js",
-    "format": "prettier --write \"src/**/*.{js,json,html,css,md}\"",
-    "format:check": "prettier --check \"src/**/*.{js,json,html,css,md}\"",
-    "mcp": "node src/mcp/mcp-universal.js",
-    "mcp:ollama": "node src/mcp/ollama-mcp-server.js",
-    "mcp:groq": "node src/mcp/groq-api-server.js",
-    "servers": "concurrently \"npm run mcp:ollama\" \"npm run mcp:groq\" \"npm run mcp\"",
-    "servers:watch": "concurrently \"nodemon --watch src/mcp --exec \\\"npm run mcp:ollama\\\"\" \"nodemon --watch src/mcp --exec \\\"npm run mcp:groq\\\"\" \"nodemon --watch src/mcp --exec \\\"npm run mcp\\\"\"",
-    "prebuild": "npm run lint:check && npm run format:check",
-    "postinstall": "electron-builder install-app-deps",
-    "precommit": "npm run lint:check && npm run format:check",
-    "prepare": "husky",
-    "review": "node scripts/auto-code-reviewer.js",
-    "review:full": "node scripts/auto-code-reviewer.js --full",
-    "orchestrator": "node scripts/start-orchestrator.js",
-    "orchestrator:start": "node scripts/start-orchestrator.js",
-    "monitors:start": "node scripts/start-orchestrator.js"
+    "test": "node scripts/test-sandra-orchestrator.js",
+    "validate": "node scripts/validate-config.js",
+    "health": "node scripts/health-check.js",
+    "select-subagents": "node scripts/select-sandra-subagents.js",
+    "invoke-subagent": "node scripts/invoke-sandra-subagent.js",
+    "execute-subagents": "node scripts/execute-sandra-subagents.js",
+    "monitor": "node scripts/start-sandra-monitoring.js",
+    "start": "node scripts/start-sandra-monitoring.js"
   },
   "keywords": [
+    "ai",
+    "orchestration",
+    "multimodal",
     "qwen",
     "deepseek",
-    "executor",
-    "ai",
-    "code-execution"
+    "sandra"
   ],
-  "author": "GUESTVALENCIA",
+  "author": "Clay",
   "license": "MIT",
-  "dependencies": {
-    "@deepgram/sdk": "3.5.0",
-    "axios": "^1.6.0",
-    "dotenv": "^16.3.1",
-    "electron": "^28.0.0",
-    "electron-store": "^8.1.0",
-    "electron-updater": "^6.6.2",
-    "express": "^4.18.2",
-    "swagger-ui-express": "^5.0.1",
-    "ws": "^8.14.2",
-    "yamljs": "^0.3.0"
+  "engines": {
+    "node": ">=14.0.0"
   },
-  "devDependencies": {
-    "electron-builder": "^24.9.1",
-    "concurrently": "^8.2.2",
-    "nodemon": "^3.0.3",
-    "rimraf": "^5.0.5",
-    "eslint": "^8.57.0",
-    "prettier": "^3.2.5",
-    "husky": "^9.0.11",
-    "lint-staged": "^15.2.2"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GUESTVALENCIA/IA-SANDRA.git"
   }
 }

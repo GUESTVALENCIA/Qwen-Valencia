@@ -1,0 +1,72 @@
+{
+  "endpoints": {
+    "voltAgentAPI": {
+      "baseUrl": "https://api.voltagent.dev",
+      "timeout": 30000,
+      "retries": 3,
+      "retryDelay": 1000
+    },
+    "mcpServer": {
+      "baseUrl": "http://localhost:3141",
+      "timeout": 10000,
+      "retries": 2,
+      "retryDelay": 500
+    }
+  },
+  "invocation": {
+    "defaultTemperature": 0.7,
+    "defaultMaxTokens": 8000,
+    "defaultUserId": "sandra-orchestrator",
+    "conversationIdPrefix": "sandra",
+    "timeout": 30000
+  },
+  "execution": {
+    "parallelLimit": 5,
+    "queueSize": 50,
+    "priorityLevels": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 3,
+      "LOW": 4
+    },
+    "retryPolicy": {
+      "maxRetries": 3,
+      "retryDelay": 1000,
+      "exponentialBackoff": true
+    }
+  },
+  "logging": {
+    "enabled": true,
+    "level": "info",
+    "logPath": ".sandra-logs",
+    "logInvocations": true,
+    "logResponses": true,
+    "logErrors": true
+  },
+  "metrics": {
+    "enabled": true,
+    "trackLatency": true,
+    "trackSuccessRate": true,
+    "trackUsage": true,
+    "metricsPath": ".sandra-metrics"
+  },
+  "monitoring": {
+    "github": {
+      "enabled": true,
+      "pollInterval": 3000,
+      "webhookEnabled": true,
+      "webhookPort": 3012
+    },
+    "mcp": {
+      "enabled": true,
+      "healthCheckInterval": 10000,
+      "queueMonitorInterval": 5000
+    },
+    "appUpdate": {
+      "enabled": true,
+      "autoUpdate": true,
+      "updateDelay": 2000
+    }
+  }
+}
+

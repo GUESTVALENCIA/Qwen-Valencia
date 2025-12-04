@@ -1,0 +1,245 @@
+{
+  "enabled": true,
+  "target": "Sandra IA 8.0",
+  "repositories": {
+    "current": "C:\\Qwen-Valencia",
+    "target": "NUEVO_REPO_AQUI",
+    "migrationPlanned": true,
+    "migrationExecuted": false
+  },
+  "monitoring": {
+    "conversational": {
+      "enabled": true,
+      "interval": 30000,
+      "agents": [
+        "sistema-conversacional-analyst",
+        "conversational-code-reviewer",
+        "contextExplorer",
+        "contextCommunicator"
+      ],
+      "responsibilities": [
+        "Monitorear STT/TTS/Avatar",
+        "Verificar flujo conversacional",
+        "Detectar problemas de contexto",
+        "Validar integraciones de audio"
+      ]
+    },
+    "application": {
+      "enabled": true,
+      "interval": 15000,
+      "agents": [
+        "electronPro",
+        "app-functionality-monitor",
+        "frontend-audio-specialist",
+        "uiSpecialist"
+      ],
+      "responsibilities": [
+        "Verificar todos los botones y funciones",
+        "Monitorear event listeners",
+        "Detectar problemas de UI/UX",
+        "Validar integración Electron"
+      ]
+    },
+    "code": {
+      "enabled": true,
+      "interval": 60000,
+      "agents": [
+        "codeReviewer",
+        "qualityAssurance",
+        "securityAuditor",
+        "performanceMonitor"
+      ],
+      "responsibilities": [
+        "Revisar calidad de código",
+        "Detectar vulnerabilidades",
+        "Monitorear performance",
+        "Validar best practices"
+      ]
+    },
+    "infrastructure": {
+      "enabled": true,
+      "interval": 120000,
+      "agents": [
+        "devOpsEngineer",
+        "cloudArchitect",
+        "apiGatewaySpecialist",
+        "databaseOptimizer"
+      ],
+      "responsibilities": [
+        "Monitorear servidores y APIs",
+        "Verificar conexiones",
+        "Validar configuración",
+        "Detectar problemas de infraestructura"
+      ]
+    }
+  },
+  "correction": {
+    "enabled": true,
+    "autoApply": false,
+    "requireApproval": true,
+    "backupBeforeCorrection": true,
+    "testAfterCorrection": true,
+    "agents": {
+      "frontend": {
+        "agents": [
+          "frontendSpecialist",
+          "reactExpert",
+          "uiSpecialist",
+          "accessibilityExpert"
+        ],
+        "responsibilities": [
+          "Corregir problemas de UI",
+          "Arreglar event listeners",
+          "Mejorar accesibilidad",
+          "Optimizar rendimiento frontend"
+        ]
+      },
+      "backend": {
+        "agents": [
+          "backendDeveloper",
+          "apiArchitect",
+          "nodejsExpert",
+          "serverOptimizer"
+        ],
+        "responsibilities": [
+          "Corregir errores de servidor",
+          "Arreglar APIs",
+          "Optimizar endpoints",
+          "Mejorar seguridad backend"
+        ]
+      },
+      "audio": {
+        "agents": [
+          "deepgram-stt-specialist",
+          "frontend-audio-specialist",
+          "audioEngineer",
+          "voiceIntegrationSpecialist"
+        ],
+        "responsibilities": [
+          "Corregir problemas STT/TTS",
+          "Arreglar integración de audio",
+          "Mejorar calidad de voz",
+          "Optimizar streaming de audio"
+        ]
+      },
+      "code": {
+        "agents": [
+          "bugFixer",
+          "refactoringSpecialist",
+          "legacyModernizer",
+          "codeOptimizer"
+        ],
+        "responsibilities": [
+          "Corregir bugs específicos",
+          "Refactorizar código legacy",
+          "Modernizar implementaciones",
+          "Optimizar rendimiento"
+        ]
+      }
+    }
+  },
+  "improvement": {
+    "enabled": true,
+    "schedule": "daily",
+    "time": "02:00",
+    "agents": {
+      "architecture": {
+        "agents": [
+          "systemArchitect",
+          "softwareDesigner",
+          "architectureReviewer",
+          "scalabilityExpert"
+        ],
+        "responsibilities": [
+          "Mejorar arquitectura general",
+          "Optimizar diseño de sistema",
+          "Planificar escalabilidad",
+          "Sugerir mejoras estructurales"
+        ]
+      },
+      "performance": {
+        "agents": [
+          "performanceEngineer",
+          "optimizationSpecialist",
+          "memoryOptimizer",
+          "speedOptimizer"
+        ],
+        "responsibilities": [
+          "Optimizar rendimiento",
+          "Reducir uso de memoria",
+          "Mejorar velocidad de respuesta",
+          "Optimizar recursos"
+        ]
+      },
+      "experience": {
+        "agents": [
+          "uxDesigner",
+          "userExperienceOptimizer",
+          "interactionDesigner",
+          "usabilityExpert"
+        ],
+        "responsibilities": [
+          "Mejorar UX/UI",
+          "Optimizar interacciones",
+          "Mejorar usabilidad",
+          "Refinar experiencia de usuario"
+        ]
+      },
+      "documentation": {
+        "agents": [
+          "documentationEngineer",
+          "technicalWriter",
+          "apiDocumenter",
+          "codeDocumenter"
+        ],
+        "responsibilities": [
+          "Mejorar documentación",
+          "Actualizar guías",
+          "Documentar APIs",
+          "Crear ejemplos"
+        ]
+      }
+    }
+  },
+  "orchestration": {
+    "primary": "sandraOrchestrator",
+    "coordinators": [
+      "multiAgentCoordinator",
+      "workflowOrchestrator",
+      "taskDistributor"
+    ],
+    "contextManagers": [
+      "contextManager",
+      "contextExplorer",
+      "knowledgeSynthesizer",
+      "promptArchitect"
+    ],
+    "responsibilities": [
+      "Coordinar todos los grupos",
+      "Distribuir tareas",
+      "Gestionar workflows",
+      "Orquestar mejoras"
+    ]
+  },
+  "reporting": {
+    "dailyReport": true,
+    "reportTime": "00:00",
+    "weeklyReport": true,
+    "weeklyReportDay": "monday",
+    "dashboardEnabled": true,
+    "dashboardPort": 3002,
+    "logPath": ".sandra-8.0-logs"
+  },
+  "voltAgent": {
+    "tokensPath": "C:\\Users\\clayt\\Desktop\\VoltAgent-Composer-Workflow\\tokens.json",
+    "apiBase": "https://api.voltagent.dev",
+    "mcpServerPort": 3141,
+    "mcpServerPath": "C:\\Users\\clayt\\Desktop\\VoltAgent-Composer-Workflow\\voltagent-mcp-server.js"
+  },
+  "notes": {
+    "status": "PLANIFICADO - NO EJECUTAR AÚN",
+    "migration": "Preparado para migración pero NO ejecutar hasta confirmación",
+    "nextSteps": "Revisar plan, ajustar configuración, luego activar sistema"
+  }
+}
+

@@ -1,0 +1,71 @@
+{
+  "enabled": true,
+  "apiBase": "https://api.voltagent.dev",
+  "voltAgentTokensPath": "C:\\Users\\clayt\\Desktop\\VoltAgent-Composer-Workflow\\tokens.json",
+  "logPath": ".orchestrator-logs",
+  "monitors": {
+    "conversational": {
+      "enabled": true,
+      "interval": 30000,
+      "agents": [
+        "sistema-conversacional-analyst",
+        "conversational-code-reviewer"
+      ]
+    },
+    "application": {
+      "enabled": true,
+      "interval": 15000,
+      "agents": [
+        "claude-code",
+        "sandra-groq"
+      ]
+    },
+    "git": {
+      "enabled": true,
+      "interval": 60000,
+      "agents": [
+        "claude-code"
+      ]
+    }
+  },
+  "specialists": {
+    "frontend": [
+      "claude-code",
+      "frontend-audio-specialist",
+      "conversational-code-reviewer"
+    ],
+    "backend": [
+      "sandra-groq",
+      "claude-code"
+    ],
+    "conversational": [
+      "deepgram-stt-specialist",
+      "frontend-audio-specialist",
+      "sistema-conversacional-analyst"
+    ],
+    "quality": [
+      "claude-code",
+      "conversational-code-reviewer",
+      "sandra-coo"
+    ]
+  },
+  "errorPriorities": {
+    "CRITICAL": { "action": "immediate", "timeout": 0 },
+    "HIGH": { "action": "urgent", "timeout": 3600000 },
+    "MEDIUM": { "action": "scheduled", "timeout": 86400000 },
+    "LOW": { "action": "queued", "timeout": 604800000 }
+  },
+  "autoCorrection": {
+    "enabled": true,
+    "requireApproval": false,
+    "backupBeforeCorrection": true,
+    "testAfterCorrection": true
+  },
+  "reporting": {
+    "dailyReport": true,
+    "reportTime": "00:00",
+    "dashboardEnabled": true,
+    "dashboardPort": 3001
+  }
+}
+
