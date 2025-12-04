@@ -1337,11 +1337,45 @@ ipcMain.handle(
         }
       });
 
-      // Escapar videoSrc para prevenir XSS en data URL
-      const escapedVideoSrc = videoSrc.replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-      avatarWindow.loadURL(
-        `data:text/html,<html><body style="margin:0;background:transparent;"><video src="${escapedVideoSrc}" autoplay playsinline style="width:100%;height:100%;object-fit:contain;"></video></body></html>`
-      );
+      // FIX: Sanitizar videoSrc para prevenir XSS e inyección de atributos
+      // Validar que no contiene caracteres peligrosos o scripts
+      const dangerousPatterns = [
+        /<script/i,
+        /javascript:/i,
+        /on\w+\s*=/i, // Event handlers como onclick, onerror, etc.
+        /<iframe/i,
+        /<object/i,
+        /<embed/i,
+        /data:text\/html/i, // Prevenir data URLs anidadas
+        /vbscript:/i
+      ];
+      
+      for (const pattern of dangerousPatterns) {
+        if (pattern.test(videoSrc)) {
+          throw new Error('videoSrc contiene contenido peligroso');
+        }
+      }
+      
+      // FIX: Construir el HTML de forma segura
+      // Escapar videoSrc para uso en atributo HTML (escapar comillas y caracteres HTML especiales)
+      const escapedVideoSrc = videoSrc
+        .replace(/&/g, '&amp;')   // Debe ser primero para evitar doble escape
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+      
+      // Construir HTML seguro y luego codificar todo el data URL
+      const htmlContent = 
+        '<html><body style="margin:0;background:transparent;">' +
+        `<video src="${escapedVideoSrc}" autoplay playsinline ` +
+        'style="width:100%;height:100%;object-fit:contain;"></video>' +
+        '</body></html>';
+      
+      // Codificar todo el HTML en el data URL
+      const safeHTML = `data:text/html,${encodeURIComponent(htmlContent)}`;
+      
+      avatarWindow.loadURL(safeHTML);
 
       return {
         success: true,
@@ -1843,9 +1877,61 @@ ipcMain.handle(
 
 /**
  * Carga un módulo bajo demanda
+ * @param {string} moduleName - Nombre del módulo a cargar
+ * @param {boolean} forceReload - Si es true, fuerza la recarga del módulo incluso si ya está cargado
+ * @returns {Promise<*>} Módulo cargado
  */
-async function loadLazyModule(moduleName) {
-  if (lazyModules[moduleName]) {
+async function loadLazyModule(moduleName, forceReload = false) {
+  // FIX: Si forceReload es true, limpiar el módulo del cache antes de cargar
+  if (forceReload && lazyModules[moduleName]) {
+    logger.info(`Forzando recarga del módulo: ${moduleName}`);
+    // Limpiar referencias según el tipo de módulo
+    switch (moduleName) {
+      case 'mcpServer':
+        if (mcpServer) {
+          try {
+            await mcpServer.stop();
+          } catch (e) {
+            logger.warn('Error deteniendo mcpServer', { error: e.message });
+          }
+          mcpServer = null;
+        }
+        lazyModules.mcpServer = null;
+        break;
+      case 'ollamaMcpServer':
+        if (ollamaMcpServer) {
+          try {
+            await ollamaMcpServer.stop();
+          } catch (e) {
+            logger.warn('Error deteniendo ollamaMcpServer', { error: e.message });
+          }
+          ollamaMcpServer = null;
+        }
+        lazyModules.ollamaMcpServer = null;
+        break;
+      case 'groqApiServer':
+        if (groqApiServer) {
+          try {
+            await groqApiServer.stop();
+          } catch (e) {
+            logger.warn('Error deteniendo groqApiServer', { error: e.message });
+          }
+          groqApiServer = null;
+        }
+        lazyModules.groqApiServer = null;
+        break;
+      case 'conversationService':
+        conversationService = null;
+        lazyModules.conversationService = null;
+        break;
+      case 'deepgramService':
+        deepgramService = null;
+        lazyModules.deepgramService = null;
+        break;
+    }
+  }
+  
+  if (lazyModules[moduleName] && !forceReload) {
     return lazyModules[moduleName];
   }
 
@@ -1922,12 +2008,14 @@ ipcMain.handle(
     try {
       // FIX: Usar la función local loadLazyModule() que maneja nombres de módulos,
       // no LazyLoader.loadLazyModule() que espera rutas de archivo
-      const module = await loadLazyModule(moduleName);
+      // Pasar forceReload para permitir recarga forzada de módulos
+      const module = await loadLazyModule(moduleName, forceReload);
 
       return {
         success: true,
         moduleName,
-        module: module ? 'loaded' : 'not found'
+        module: module ? 'loaded' : 'not found',
+        forceReload
       };
     } catch (error) {
       logger.error('Error en load-lazy-module', {

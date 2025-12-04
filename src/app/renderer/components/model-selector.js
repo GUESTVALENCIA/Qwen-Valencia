@@ -220,10 +220,18 @@ class ModelSelector {
                 }
             );
             
-            // Si es la primera renderización, usar innerHTML para los headers/dividers
-            if (result.added === items.length) {
-                // Primera vez, renderizar todo
+            // FIX: Verificar que result existe y que el total de elementos en el DOM coincida con items.length
+            // Si no coincide, significa que la actualización incremental falló parcialmente
+            // y debemos ejecutar el fallback para asegurar consistencia del DOM
+            if (!result || result.total !== items.length) {
+                // Fallback: renderización completa si la actualización incremental falló o no produjo el resultado esperado
                 this.renderModelListFull(container, items);
+            } else {
+                // Verificar también el conteo real en el DOM como validación adicional
+                const actualCount = container.querySelectorAll('[data-key]').length;
+                if (actualCount !== items.length) {
+                    this.renderModelListFull(container, items);
+                }
             }
         } else {
             // Fallback: renderización completa

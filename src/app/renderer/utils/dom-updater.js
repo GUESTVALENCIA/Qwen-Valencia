@@ -20,7 +20,13 @@
 function updateListIncremental(container, items, renderItem, getItemKey, options = {}) {
     if (!container || !Array.isArray(items)) {
         console.warn('⚠️ updateListIncremental: parámetros inválidos');
-        return;
+        // FIX: Retornar objeto con estructura esperada para evitar TypeError en callers
+        return {
+            added: 0,
+            updated: 0,
+            removed: 0,
+            total: 0
+        };
     }
 
     const {

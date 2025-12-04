@@ -13,8 +13,10 @@ class StateManager {
     // FIX: Definir enableImmutable ANTES de llamar deepFreeze() para que funcione correctamente
     this.enableImmutable = options.enableImmutable !== false; // Por defecto habilitado
     
-    // FIX: Hacer estado inmutable usando deep freeze
-    this.state = this.deepFreeze({ ...initialState });
+    // FIX: Crear copia profunda del estado inicial antes de congelarlo
+    // Esto evita problemas si initialState ya está congelado o tiene objetos anidados congelados
+    const initialStateCopy = this.deepCopy(initialState);
+    this.state = this.deepFreeze(initialStateCopy);
     this.observers = new Map();
     this.middleware = [];
     this.history = [];
@@ -52,22 +54,58 @@ class StateManager {
 
   /**
    * Deep freeze para hacer objetos completamente inmutables
+   * FIX: Excluye funciones, Date, Map, Set y otros objetos built-in que no deben congelarse
    */
   deepFreeze(obj) {
     if (!this.enableImmutable) {
       return obj;
     }
 
+    // FIX: No congelar valores primitivos, null, undefined
+    if (obj === null || typeof obj !== 'object') {
+      return obj;
+    }
+
+    // FIX: No congelar objetos built-in especiales que tienen contratos de mutabilidad
+    // Date, Map, Set, WeakMap, WeakSet, RegExp, etc. no deben congelarse
+    if (obj instanceof Date || 
+        obj instanceof Map || 
+        obj instanceof Set || 
+        obj instanceof WeakMap || 
+        obj instanceof WeakSet || 
+        obj instanceof RegExp ||
+        obj instanceof Error ||
+        obj instanceof Promise) {
+      return obj; // Retornar sin congelar
+    }
+
+    // FIX: No congelar funciones (aunque typeof 'function' !== 'object', 
+    // algunas propiedades de objetos pueden ser funciones)
+    if (typeof obj === 'function') {
+      return obj;
+    }
+
     // Obtener nombres de propiedades
     const propNames = Object.getOwnPropertyNames(obj);
 
-    // Freeze propiedades
+    // Freeze propiedades recursivamente
     propNames.forEach(name => {
       const value = obj[name];
 
-      // Freeze recursivamente si es objeto o array
-      if (value && typeof value === 'object') {
-        this.deepFreeze(value);
+      // FIX: Solo freeze recursivamente si es un objeto plano o array
+      // Excluir funciones y objetos built-in especiales
+      if (value !== null && typeof value === 'object') {
+        // Verificar que no sea un objeto built-in especial antes de congelar recursivamente
+        if (!(value instanceof Date || 
+              value instanceof Map || 
+              value instanceof Set || 
+              value instanceof WeakMap || 
+              value instanceof WeakSet || 
+              value instanceof RegExp ||
+              value instanceof Error ||
+              value instanceof Promise)) {
+          this.deepFreeze(value);
+        }
       }
     });
 
@@ -123,17 +161,35 @@ class StateManager {
     // Crear copia profunda del estado anterior
     const previousState = this.deepCopy(this.state);
 
-    // Crear nuevo estado con el cambio
-    const newState = { ...this.state };
+    // FIX: Crear copia profunda no congelada del estado actual
+    // Usar deepCopy en lugar de spread operator para evitar que objetos anidados sigan congelados
+    const newState = this.deepCopy(this.state);
     newState[key] = value;
 
     // Ejecutar middleware
+    // FIX: Clarificar que middleware debe retornar un nuevo objeto, no mutar el existente
+    // Si retorna el mismo objeto (incluyendo this.state congelado), crear una copia mutable
     let processedState = newState;
     for (const middleware of this.middleware) {
-      processedState = middleware(processedState, action, { key, value, previousState });
-      // Asegurar que middleware retorna un objeto nuevo
-      if (processedState === this.state) {
-        processedState = { ...processedState };
+      const middlewareResult = middleware(processedState, action, { key, value, previousState });
+      
+      // FIX: Verificar si el middleware retornó el mismo objeto (frozen o no)
+      // Si es así, crear una copia mutable para permitir futuras mutaciones
+      if (middlewareResult === processedState || middlewareResult === this.state) {
+        // Middleware retornó el mismo objeto (posiblemente congelado), crear copia mutable
+        processedState = this.deepCopy(middlewareResult);
+      } else {
+        // Middleware retornó un nuevo objeto, usar ese
+        processedState = middlewareResult;
+      }
+      
+      // Validar que processedState es un objeto válido
+      if (!processedState || typeof processedState !== 'object') {
+        this.logger.warn('Middleware retornó valor inválido, usando estado anterior', {
+          action,
+          middlewareResult: typeof middlewareResult
+        });
+        processedState = newState;
       }
     }
 
@@ -161,20 +217,38 @@ class StateManager {
     const previousState = this.deepCopy(this.state);
     const changes = {};
 
-    // Crear nuevo estado con todos los cambios
-    const newState = { ...this.state };
+    // FIX: Crear copia profunda no congelada del estado actual
+    // Usar deepCopy en lugar de spread operator para evitar que objetos anidados sigan congelados
+    const newState = this.deepCopy(this.state);
     for (const [key, value] of Object.entries(updates)) {
       newState[key] = value;
       changes[key] = { from: previousState[key], to: value };
     }
 
     // Ejecutar middleware
+    // FIX: Clarificar que middleware debe retornar un nuevo objeto, no mutar el existente
+    // Si retorna el mismo objeto (incluyendo this.state congelado), crear una copia mutable
     let processedState = newState;
     for (const middleware of this.middleware) {
-      processedState = middleware(processedState, action, { changes, previousState });
-      // Asegurar que middleware retorna un objeto nuevo
-      if (processedState === this.state) {
-        processedState = { ...processedState };
+      const middlewareResult = middleware(processedState, action, { changes, previousState });
+      
+      // FIX: Verificar si el middleware retornó el mismo objeto (frozen o no)
+      // Si es así, crear una copia mutable para permitir futuras mutaciones
+      if (middlewareResult === processedState || middlewareResult === this.state) {
+        // Middleware retornó el mismo objeto (posiblemente congelado), crear copia mutable
+        processedState = this.deepCopy(middlewareResult);
+      } else {
+        // Middleware retornó un nuevo objeto, usar ese
+        processedState = middlewareResult;
+      }
+      
+      // Validar que processedState es un objeto válido
+      if (!processedState || typeof processedState !== 'object') {
+        this.logger.warn('Middleware retornó valor inválido, usando estado anterior', {
+          action,
+          middlewareResult: typeof middlewareResult
+        });
+        processedState = newState;
       }
     }
 
@@ -262,11 +336,12 @@ class StateManager {
    * Agrega entrada al historial
    */
   addToHistory(action, data) {
+    // FIX: Usar deepCopy para guardar copia profunda no congelada del estado en el historial
     this.history.push({
       timestamp: Date.now(),
       action,
       data,
-      state: { ...this.state }
+      state: this.deepCopy(this.state)
     });
 
     // Limitar tamaño del historial
@@ -311,8 +386,12 @@ class StateManager {
       const saved = localStorage.getItem(this.persistenceKey);
       if (saved) {
         const parsedState = JSON.parse(saved);
+        // FIX: Crear copias profundas de ambos estados antes de hacer merge
+        // Esto evita problemas si el estado actual está congelado o tiene objetos anidados congelados
+        const currentStateCopy = this.deepCopy(this.state);
+        const parsedStateCopy = this.deepCopy(parsedState);
+        const mergedState = { ...currentStateCopy, ...parsedStateCopy };
         // FIX: Congelar el estado cargado para mantener la inmutabilidad
-        const mergedState = { ...this.state, ...parsedState };
         this.state = this.enableImmutable ? this.deepFreeze(mergedState) : mergedState;
         this.logger.info('State loaded from storage', { keys: Object.keys(parsedState) });
       }
@@ -325,9 +404,10 @@ class StateManager {
    * Resetea estado a valores iniciales
    */
   reset(initialState = {}) {
-    const previousState = { ...this.state };
-    // FIX: Congelar el estado reseteado para mantener la inmutabilidad
-    const newState = { ...initialState };
+    // FIX: Usar deepCopy para guardar copia profunda no congelada del estado anterior
+    const previousState = this.deepCopy(this.state);
+    // FIX: Crear copia profunda del estado inicial y congelarlo para mantener la inmutabilidad
+    const newState = this.deepCopy(initialState);
     this.state = this.enableImmutable ? this.deepFreeze(newState) : newState;
     this.notifyObservers('*', this.state, previousState);
     this.saveToStorage();
